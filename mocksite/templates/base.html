@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>{{ title }} — 모의 은행</title>
+<style>
+  body { font-family: sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+  nav a { margin-right: 1rem; }
+  .balance { font-size: 1.5rem; font-weight: bold; }
+  .bill, .history-item { border: 1px solid #ccc; padding: .5rem 1rem; margin-bottom: .5rem; }
+  .paid { color: #888; text-decoration: line-through; }
+  form label { display: block; margin-top: .75rem; }
+  button { margin-top: 1rem; padding: .5rem 1rem; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="/home">내 계좌</a>
+  <a href="/bills">청구서</a>
+  <a href="/transfer">이체</a>
+  <a href="/history">거래내역</a>
+  <a href="/consent">약관</a>
+</nav>
+<h1>{{ title }}</h1>
+{% block content %}{% endblock %}
+</body>
+</html>

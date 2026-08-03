@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+{% for b in state.bills %}
+<div class="bill {{ 'paid' if b.paid }}">
+  <strong>{{ b.payee }}</strong> — {{ "{:,}".format(b.amount) }}원 (만기 {{ b.due }})
+  {% if not b.paid %}<a href="/pay">납부하기</a>{% else %}[납부완료]{% endif %}
+</div>
+{% endfor %}
+{% endblock %}

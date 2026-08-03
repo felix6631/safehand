@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="balance">잔액: {{ "{:,}".format(state.balance) }}원</p>
+<p>오늘 이체 누적: {{ "{:,}".format(state.daily_transferred) }}원</p>
+{% endblock %}

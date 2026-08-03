@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+
+# --- SafeHand ---
+# 빌드 산출물
+kernel/safehand_kernel
+kernel/safehand_kernel.exe
+kernel/*.o
+kernel/hello
+kernel/hello.exe
+
+# 런타임 데이터
+logs/*.jsonl
+snapshots/*
+!snapshots/.gitkeep
+mocksite/state.json
+!mocksite/state.default.json
+
+# 비밀
+.env
+*.key
+
+# 가상환경 / 에디터
+.venv/
+.vscode/
+.idea/

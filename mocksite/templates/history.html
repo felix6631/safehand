@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+{% if state.history %}
+  {% for h in state.history %}
+  <div class="history-item">{{ h.ts }} — {{ h.type }} {{ h.payee }} {{ "{:,}".format(h.amount) }}원</div>
+  {% endfor %}
+{% else %}
+  <p>거래내역이 없습니다.</p>
+{% endif %}
+{% endblock %}

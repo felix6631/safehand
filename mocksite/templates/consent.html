@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<form id="consent-form" onsubmit="return false;">
+  <label><input id="chk_privacy" type="checkbox" {{ "checked" if state.form.chk_privacy }}> 개인정보 수집 동의</label>
+  <label><input id="chk_terms" type="checkbox" {{ "checked" if state.form.chk_terms }}> 이용약관 동의</label>
+  <label><input id="chk_marketing" type="checkbox" {{ "checked" if state.form.chk_marketing }}> 마케팅 정보 수신 동의</label>
+  <button id="btn_agree_all">전체 동의</button>
+</form>
+{% endblock %}

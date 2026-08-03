@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<form id="transfer-form" onsubmit="return false;">
+  <label for="recipient">받는 사람
+    <select id="recipient">
+      {% for p in state.registered_payees %}
+      <option value="{{ p }}">{{ p }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label for="amount">금액
+    <input id="amount" type="text" value="{{ state.form.amount }}">
+  </label>
+  <button id="btn_transfer">이체하기</button>
+</form>
+{% endblock %}

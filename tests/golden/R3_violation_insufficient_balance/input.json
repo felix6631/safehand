@@ -1,0 +1,48 @@
+{
+  "spec": {
+    "schema_version": "1.0",
+    "request_id": "r3-violation-insufficient-balance",
+    "user_intent": "test",
+    "model_confidence": 0.9,
+    "claimed_state": {
+      "page": "/bills",
+      "balance": 50000,
+      "state_hash": "f3fc596c09fd78d37a5412bdb9fbafc520ed424f90960d12570dff2ca903ae19"
+    },
+    "steps": [
+      {
+        "seq": 1,
+        "action": "input",
+        "target": "amount",
+        "value": "90000",
+        "evidence": "bills[0].amount"
+      }
+    ]
+  },
+  "attestation": {
+    "att_version": "1.0",
+    "captured_at": "2026-08-03T00:00:00.000Z",
+    "state_view": {
+      "page": "/bills",
+      "balance": 50000,
+      "daily_transferred": 0,
+      "bills": [
+        {
+          "id": "bill_kepco",
+          "payee": "한국전력공사",
+          "amount": 90000,
+          "due": "2026-08-25",
+          "paid": false
+        }
+      ],
+      "registered_payees": [
+        "한국전력공사",
+        "서울도시가스",
+        "김영희"
+      ],
+      "form_fields": []
+    },
+    "state_hash": "f3fc596c09fd78d37a5412bdb9fbafc520ed424f90960d12570dff2ca903ae19",
+    "hmac": "a6db9a6a89c35afb8012235fbd5b4294a269ca8798fe879c3f5689201653ea58"
+  }
+}

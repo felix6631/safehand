@@ -1,0 +1,21 @@
+{
+  "page": "/home",
+  "balance": 300000,
+  "daily_transferred": 0,
+  "daily_transferred_date": "2026-08-03",
+  "bills": [
+    {"id": "bill_kepco", "payee": "한국전력공사", "amount": 52000, "due": "2026-08-25", "paid": false},
+    {"id": "bill_gas", "payee": "서울도시가스", "amount": 38000, "due": "2026-09-05", "paid": false}
+  ],
+  "registered_payees": ["한국전력공사", "서울도시가스", "김영희"],
+  "history": [],
+  "form": {
+    "amount": "",
+    "payee": "",
+    "recipient": "",
+    "chk_privacy": false,
+    "chk_terms": false,
+    "chk_marketing": false
+  },
+  "attack_mode": false
+}

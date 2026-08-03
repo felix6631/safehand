@@ -1,0 +1,15 @@
+{
+  "config_version": "1.0",
+  "per_tx_limit": 100000,
+  "daily_limit": 300000,
+  "confidence_threshold": 0.6,
+  "max_steps": 8,
+  "max_navigations": 3,
+  "max_input_chars": 200,
+  "night_hours": [0, 6],
+  "payee_fields": ["payee", "recipient", "account_no"],
+  "amount_fields": ["amount", "transfer_amount"],
+  "irreversible_targets": ["btn_pay", "btn_transfer", "btn_cancel_service", "btn_delete"],
+  "consent_targets": ["chk_privacy", "chk_terms", "chk_marketing", "btn_agree_all"],
+  "allowed_urls": ["/home", "/bills", "/pay", "/transfer", "/history", "/consent", "/settings"]
+}

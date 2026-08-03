@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "request_id": "req-e2e-0001",
+  "user_intent": "전기요금 납부",
+  "model_confidence": 0.95,
+  "claimed_state": {
+    "page": "PLACEHOLDER",
+    "balance": 0,
+    "state_hash": "PLACEHOLDER"
+  },
+  "steps": [
+    {"seq": 1, "action": "navigate", "target": "/pay"},
+    {"seq": 2, "action": "select", "target": "payee", "value": "한국전력공사", "evidence": "bills[0].payee"},
+    {"seq": 3, "action": "input", "target": "amount", "value": "52000", "evidence": "bills[0].amount"},
+    {"seq": 4, "action": "click", "target": "btn_pay", "irreversible": true}
+  ]
+}

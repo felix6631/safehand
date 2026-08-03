@@ -1,0 +1,48 @@
+{
+  "spec": {
+    "schema_version": "1.0",
+    "request_id": "r3-boundary-99999-allow",
+    "user_intent": "test",
+    "model_confidence": 0.9,
+    "claimed_state": {
+      "page": "/bills",
+      "balance": 300000,
+      "state_hash": "0316d41b0ee28b4f653f56b3e8f6d540fee04b2a4d2289097851ee3d0885987c"
+    },
+    "steps": [
+      {
+        "seq": 1,
+        "action": "input",
+        "target": "amount",
+        "value": "99999",
+        "evidence": "bills[0].amount"
+      }
+    ]
+  },
+  "attestation": {
+    "att_version": "1.0",
+    "captured_at": "2026-08-03T00:00:00.000Z",
+    "state_view": {
+      "page": "/bills",
+      "balance": 300000,
+      "daily_transferred": 0,
+      "bills": [
+        {
+          "id": "bill_kepco",
+          "payee": "한국전력공사",
+          "amount": 99999,
+          "due": "2026-08-25",
+          "paid": false
+        }
+      ],
+      "registered_payees": [
+        "한국전력공사",
+        "서울도시가스",
+        "김영희"
+      ],
+      "form_fields": []
+    },
+    "state_hash": "0316d41b0ee28b4f653f56b3e8f6d540fee04b2a4d2289097851ee3d0885987c",
+    "hmac": "54ffae3785b5e4c18bd216e761d606e5460b6d10b91bd92dc18000951c141307"
+  }
+}

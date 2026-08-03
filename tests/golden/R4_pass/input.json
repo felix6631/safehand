@@ -1,0 +1,48 @@
+{
+  "spec": {
+    "schema_version": "1.0",
+    "request_id": "r4-pass",
+    "user_intent": "test",
+    "model_confidence": 0.9,
+    "claimed_state": {
+      "page": "/bills",
+      "balance": 300000,
+      "state_hash": "816c2643ee25f3eddbdf9d3013d6895a1b667791400180bc1e95bc01f2820153"
+    },
+    "steps": [
+      {
+        "seq": 1,
+        "action": "select",
+        "target": "payee",
+        "value": "한국전력공사",
+        "evidence": "bills[0].payee"
+      }
+    ]
+  },
+  "attestation": {
+    "att_version": "1.0",
+    "captured_at": "2026-08-03T00:00:00.000Z",
+    "state_view": {
+      "page": "/bills",
+      "balance": 300000,
+      "daily_transferred": 0,
+      "bills": [
+        {
+          "id": "bill_x",
+          "payee": "한국전력공사",
+          "amount": 52000,
+          "due": "2026-08-25",
+          "paid": false
+        }
+      ],
+      "registered_payees": [
+        "한국전력공사",
+        "서울도시가스",
+        "김영희"
+      ],
+      "form_fields": []
+    },
+    "state_hash": "816c2643ee25f3eddbdf9d3013d6895a1b667791400180bc1e95bc01f2820153",
+    "hmac": "1978a56ee5a7c53bfa270df1da8cc8fda98685cac54fc8d75e23136e6709b3a2"
+  }
+}

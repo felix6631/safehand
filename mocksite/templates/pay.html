@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<form id="pay-form" onsubmit="return false;">
+  <label for="payee">받는 곳
+    <select id="payee">
+      {% for p in state.registered_payees %}
+      <option value="{{ p }}">{{ p }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label for="amount">금액
+    <input id="amount" type="text" value="{{ state.form.amount }}">
+  </label>
+  <button id="btn_pay">납부하기</button>
+</form>
+{% endblock %}

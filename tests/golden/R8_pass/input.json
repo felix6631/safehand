@@ -1,0 +1,38 @@
+{
+  "spec": {
+    "schema_version": "1.0",
+    "request_id": "r8-pass",
+    "user_intent": "test",
+    "model_confidence": 0.9,
+    "claimed_state": {
+      "page": "/bills",
+      "balance": 300000,
+      "state_hash": "4d98f9088ac021f8668c5c94234e29d5b6c0c2284e256d18771fdbac7672ed52"
+    },
+    "steps": [
+      {
+        "seq": 1,
+        "action": "click",
+        "target": "btn_normal"
+      }
+    ]
+  },
+  "attestation": {
+    "att_version": "1.0",
+    "captured_at": "2026-08-03T00:00:00.000Z",
+    "state_view": {
+      "page": "/bills",
+      "balance": 300000,
+      "daily_transferred": 0,
+      "bills": [],
+      "registered_payees": [
+        "한국전력공사",
+        "서울도시가스",
+        "김영희"
+      ],
+      "form_fields": []
+    },
+    "state_hash": "4d98f9088ac021f8668c5c94234e29d5b6c0c2284e256d18771fdbac7672ed52",
+    "hmac": "48f856e93a6e7102107702a24b7cb534cc2adceb584dd208aeeb7c61962a6c72"
+  }
+}
