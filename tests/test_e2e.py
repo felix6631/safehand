@@ -88,6 +88,37 @@ def test_e2e_normal_payment(fresh_state, tmp_path):
     kernel.close()
 
 
+def test_toctou_state_change_blocks_step_check(fresh_state, tmp_path):
+    """Phase 5 DoD: verify와 실행 사이에 mocksite 상태를 손으로 바꾸면 step_check에서 중단된다."""
+    kernel = KernelClient(str(KERNEL_EXE), str(tmp_path / "audit.jsonl"), str(CONFIG_PATH), TEST_SECRET)
+    executor = Executor(MOCKSITE_URL, secret=TEST_SECRET)
+
+    spec = load_spec_with_live_claim(executor)
+    verdict = kernel.call({"type": "verify", "spec": spec, "attestation": executor.attest()})
+    assert verdict["decision"] == "HOLD"  # btn_pay가 irreversible이라 R2가 먼저 HOLD시킨다
+
+    resolve = kernel.call({
+        "type": "resolve_hold", "request_id": spec["request_id"],
+        "challenge": verdict["challenge"], "decision": "approve",
+    })
+    assert resolve["decision"] == "ALLOW"
+
+    # 승인 후, 실행 전에 화면이 바뀐 상황을 흉내낸다 (공격자가 직접 mocksite를 건드린 경우)
+    requests.post(MOCKSITE_URL + "/api/act", json={"action": "navigate", "target": "/transfer"}, timeout=5)
+
+    tampered_attestation = executor.attest()
+    check = kernel.call({
+        "type": "step_check", "request_id": spec["request_id"],
+        "seq": 2, "attestation": tampered_attestation,
+    })
+    assert check["decision"] == "DENY"
+
+    sv = executor.get_state_view()
+    assert sv["balance"] == 300000  # 아무 것도 실행되지 않았다
+
+    kernel.close()
+
+
 def test_kernel_death_halts_execution(fresh_state, tmp_path):
     kernel = KernelClient(str(KERNEL_EXE), str(tmp_path / "audit.jsonl"), str(CONFIG_PATH), TEST_SECRET)
     executor = Executor(MOCKSITE_URL, secret=TEST_SECRET)
