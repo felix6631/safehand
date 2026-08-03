@@ -14,6 +14,19 @@ class Orchestrator:
         self.executor = executor
         self._pending_specs = {}  # request_id -> spec (HOLD 해소 후 실행하기 위해 보관)
 
+    def plan_and_run(self, instruction: str, planner, scenario: str = None) -> dict:
+        """자연어 지시를 받아 planner로 명세를 만들고 그대로 run()에 넘긴다.
+        planner는 executor를 모른다 — observation/state_hint는 orchestrator가 만들어 건네준다."""
+        observation = self.executor.get_observation()
+        attestation = self.executor.attest()
+        state_hint = {
+            "page": attestation["state_view"]["page"],
+            "balance": attestation["state_view"]["balance"],
+            "state_hash": attestation["state_hash"],
+        }
+        spec = planner.plan(instruction, observation, state_hint, scenario=scenario)
+        return self.run(spec)
+
     def run(self, spec: dict) -> dict:
         attestation = self.executor.attest()
         verdict = self.kernel.call({"type": "verify", "spec": spec, "attestation": attestation})
@@ -55,16 +68,35 @@ class Orchestrator:
             if check["decision"] != "ALLOW":
                 return {"status": "halted", "verdict": verdict, "step_check": check, "results": results}
 
+            snap = None
             if step.get("irreversible"):
-                snapshot.save(spec["request_id"], step["seq"])
+                snap = snapshot.save(spec["request_id"], step["seq"])
             result = self.executor.act(step["action"], step["target"], step.get("value"))
-            self.kernel.call({
+            commit_payload = {
                 "type": "commit",
                 "request_id": spec["request_id"],
                 "seq": step["seq"],
                 "result": result,
                 "attestation": self.executor.attest(),
-            })
+            }
+            if snap is not None:
+                commit_payload["snapshot"] = snap
+            self.kernel.call(commit_payload)
             results.append({"seq": step["seq"], "result": result})
 
         return {"status": "executed", "verdict": verdict, "results": results}
+
+    def undo(self, request_id: str) -> dict:
+        """가장 최근 스냅샷으로 되돌린다. 되돌리기 자체도 감사 로그에 남는다."""
+        snap_path = snapshot.latest_snapshot(request_id)
+        if snap_path is None:
+            return {"status": "no_snapshot"}
+
+        restored_hash = snapshot.restore(snap_path)
+        ack = self.kernel.call({
+            "type": "undo",
+            "request_id": request_id,
+            "snapshot_path": str(snap_path),
+            "snapshot_hash": restored_hash,
+        })
+        return {"status": "undone", "snapshot_path": str(snap_path), "ack": ack}
