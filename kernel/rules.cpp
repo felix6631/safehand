@@ -255,6 +255,12 @@ const std::vector<RuleEntry> ALL_RULES = {
 };
 
 Verdict evaluate(const RuleContext& ctx) {
+    // 모든 규칙을 끝까지 평가해 위반을 전부 모은다 ("부분 실행 금지"는 실행을 막는다는
+    // 뜻이지, 첫 DENY에서 나머지 규칙 평가 자체를 생략하라는 뜻이 아니다).
+    // 예: 인젝션 공격은 보통 R4(미등록 수취인)와 R5(근거 없음)를 동시에 위반한다 —
+    // 둘 다 보여줘야 "AI가 왜 막혔는지"를 온전히 설명할 수 있다.
+    // 최종 판정 우선순위는 DENY > HOLD > ALLOW이며, 어떤 순서로 평가되든 DENY가 한 번
+    // 정해지면 이후의 HOLD로 격하되지 않는다.
     Verdict v;
     v.decision = Decision::ALLOW;
     for (const auto& r : ALL_RULES) {
@@ -262,9 +268,7 @@ Verdict evaluate(const RuleContext& ctx) {
             v.triggered.push_back(hit);
             if (hit.decision == Decision::DENY) {
                 v.decision = Decision::DENY;
-                return v; // DENY는 즉시 중단 (부분 실행 금지)
-            }
-            if (hit.decision == Decision::HOLD) {
+            } else if (hit.decision == Decision::HOLD && v.decision != Decision::DENY) {
                 v.decision = Decision::HOLD;
             }
         }

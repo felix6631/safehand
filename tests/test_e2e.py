@@ -11,6 +11,7 @@ import requests
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from agent import audit_log
 from agent.executor import Executor
 from agent.kernel_client import KernelClient, KernelDeadError
 from agent.orchestrator import Orchestrator
@@ -116,6 +117,39 @@ def test_toctou_state_change_blocks_step_check(fresh_state, tmp_path):
     sv = executor.get_state_view()
     assert sv["balance"] == 300000  # 아무 것도 실행되지 않았다
 
+    kernel.close()
+
+
+def test_undo_after_payment_restores_balance(fresh_state, tmp_path):
+    """Phase 6 DoD: 납부 후 Undo -> 잔액이 정확히 원복되고, Undo 자체도 로그에 남는다."""
+    log_path = tmp_path / "audit.jsonl"
+    kernel = KernelClient(str(KERNEL_EXE), str(log_path), str(CONFIG_PATH), TEST_SECRET)
+    executor = Executor(MOCKSITE_URL, secret=TEST_SECRET)
+    orch = Orchestrator(kernel, executor)
+
+    spec = load_spec_with_live_claim(executor)
+    result = orch.run(spec)
+    assert result["status"] == "hold"
+    result = orch.resolve(spec["request_id"], result["verdict"]["challenge"], approve=True)
+    assert result["status"] == "executed"
+
+    sv = executor.get_state_view()
+    assert sv["balance"] == 300000 - 52000
+    assert sv["bills"][0]["paid"] is True
+
+    undo_result = orch.undo(spec["request_id"])
+    assert undo_result["status"] == "undone"
+
+    sv_after_undo = executor.get_state_view()
+    assert sv_after_undo["balance"] == 300000
+    assert sv_after_undo["bills"][0]["paid"] is False
+
+    summary = audit_log.summarize(log_path)
+    entry = next(s for s in summary if s["request_id"] == spec["request_id"])
+    assert entry["status"] == "되돌림"
+
+    for p in (ROOT / "snapshots").glob(f"{spec['request_id']}_*"):
+        p.unlink()
     kernel.close()
 
 

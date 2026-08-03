@@ -1,4 +1,5 @@
 #include <chrono>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <random>
@@ -21,6 +22,15 @@ struct PendingHold {
     std::vector<RuleHit> triggered;
 };
 
+// 규칙 파일이 바뀌었는지 추적하기 위해 BOOT/CONFIG_RELOAD에 해시를 남긴다.
+std::string file_sha256(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in.is_open()) return "";
+    std::ostringstream buf;
+    buf << in.rdbuf();
+    return sha256_hex(buf.str());
+}
+
 std::string make_challenge() {
     static std::mt19937_64 rng(std::random_device{}());
     std::ostringstream oss;
@@ -42,10 +52,12 @@ json triggered_to_json(const std::vector<RuleHit>& triggered) {
     return arr;
 }
 
-json verdict_to_json(const std::string& request_id, const Verdict& v, const std::string& challenge = "") {
+json verdict_to_json(const std::string& request_id, const Verdict& v, const std::string& user_intent = "",
+                      const std::string& challenge = "") {
     json out;
     out["type"] = "verdict";
     out["request_id"] = request_id;
+    out["user_intent"] = user_intent;
     out["decision"] = decision_to_string(v.decision);
     out["triggered"] = triggered_to_json(v.triggered);
     out["challenge"] = challenge.empty() ? json(nullptr) : json(challenge);
@@ -103,9 +115,9 @@ json handle_verify(const json& in, Config& cfg, Ledger& ledger, Audit& audit, co
     if (v.decision == Decision::HOLD) {
         std::string challenge = make_challenge();
         holds[sr.spec.request_id] = PendingHold{challenge, v.triggered};
-        out = verdict_to_json(sr.spec.request_id, v, challenge);
+        out = verdict_to_json(sr.spec.request_id, v, sr.spec.user_intent, challenge);
     } else {
-        out = verdict_to_json(sr.spec.request_id, v);
+        out = verdict_to_json(sr.spec.request_id, v, sr.spec.user_intent);
     }
     audit.record("VERDICT", out);
     return out;
@@ -214,9 +226,24 @@ json handle_commit(const json& in, Ledger& ledger, Audit& audit,
     payload["request_id"] = request_id;
     payload["seq"] = seq;
     payload["result"] = result;
+    if (in.contains("snapshot")) {
+        // 스냅샷 파일 자체는 orchestrator가 관리하지만, 경로+해시를 해시체인에 새겨두면
+        // 스냅샷 파일이 사후에 변조됐는지도 감사 로그와 대조해 탐지할 수 있다.
+        payload["snapshot"] = in["snapshot"];
+    }
     audit.record("EXECUTED", payload);
 
     return {{"type", "commit_ack"}, {"request_id", request_id}, {"seq", seq}};
+}
+
+json handle_undo(const json& in, Audit& audit) {
+    std::string request_id = in.value("request_id", "");
+    json payload;
+    payload["request_id"] = request_id;
+    payload["snapshot_path"] = in.value("snapshot_path", "");
+    payload["snapshot_hash"] = in.value("snapshot_hash", "");
+    audit.record("UNDO", payload);
+    return {{"type", "undo_ack"}, {"request_id", request_id}};
 }
 
 } // namespace
@@ -236,7 +263,7 @@ int main(int argc, char** argv) {
     std::map<std::string, Spec> verified_specs;
     std::map<std::string, std::string> baseline_hash;
 
-    audit.record("BOOT", json::object());
+    audit.record("BOOT", {{"config_version", cfg.config_version}, {"config_hash", file_sha256(config_path)}});
 
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -256,8 +283,11 @@ int main(int argc, char** argv) {
                 out = handle_resolve_hold(in, holds, audit);
             } else if (type == "commit") {
                 out = handle_commit(in, ledger, audit, pending_amounts, verified_specs, baseline_hash);
+            } else if (type == "undo") {
+                out = handle_undo(in, audit);
             } else if (type == "reload_config") {
                 cfg.reload();
+                audit.record("CONFIG_RELOAD", {{"config_version", cfg.config_version}, {"config_hash", file_sha256(cfg.path)}});
                 out = {{"type", "ok"}};
             } else if (type == "audit_verify") {
                 out = audit.verify_chain();
