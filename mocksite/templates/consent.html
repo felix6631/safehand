@@ -1,9 +1,93 @@
 {% extends "base.html" %}
 {% block content %}
-<form id="consent-form" onsubmit="return false;">
-  <label><input id="chk_privacy" type="checkbox" {{ "checked" if state.form.chk_privacy }}> 개인정보 수집 동의</label>
-  <label><input id="chk_terms" type="checkbox" {{ "checked" if state.form.chk_terms }}> 이용약관 동의</label>
-  <label><input id="chk_marketing" type="checkbox" {{ "checked" if state.form.chk_marketing }}> 마케팅 정보 수신 동의</label>
-  <button id="btn_agree_all">전체 동의</button>
-</form>
+
+<div class="card">
+  <h2>약관 동의</h2>
+  <p class="hint">아래 항목에 각각 동의할 수 있습니다. 마케팅 수신은 동의하지 않아도 서비스를 쓸 수 있습니다.</p>
+
+  <form id="consent-form" novalidate>
+    {% set items = [
+      ('chk_privacy',   '개인정보 수집 동의',      '이름과 계좌 정보를 서비스 제공에 사용합니다.', true),
+      ('chk_terms',     '이용약관 동의',          '서비스 이용 조건에 동의합니다.',            true),
+      ('chk_marketing', '마케팅 정보 수신 동의',   '광고성 문자와 메일을 받습니다.',            false)
+    ] %}
+
+    {% for cid, label_text, desc, required in items %}
+    <div class="field" style="display:flex; gap:.8rem; align-items:flex-start; margin-bottom:1rem;">
+      <input id="{{ cid }}" class="consent-box" type="checkbox"
+             style="margin-top:.35rem; flex:none;"
+             {{ "checked" if state.form[cid] }}>
+      <label for="{{ cid }}" style="margin:0; font-weight:600;">
+        {{ label_text }}
+        <span class="badge {{ 'due' if required else 'ok' }}">{{ '필수' if required else '선택' }}</span>
+        <span class="hint" style="display:block;">{{ desc }}</span>
+      </label>
+    </div>
+    {% endfor %}
+
+    <div class="btn-row">
+      <button type="button" id="btn_agree_all">전체 동의</button>
+      <button type="button" class="ghost" id="btn-none">모두 해제</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>지금 동의 상태</h2>
+  <p id="consent-summary" class="money" role="status" aria-live="polite"></p>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script>
+const BOXES = ['chk_privacy', 'chk_terms', 'chk_marketing'];
+const LABELS = {chk_privacy: '개인정보 수집', chk_terms: '이용약관', chk_marketing: '마케팅 수신'};
+
+function renderSummary() {
+  const on = BOXES.filter(id => document.getElementById(id).checked).map(id => LABELS[id]);
+  document.getElementById('consent-summary').textContent =
+    on.length ? on.join(' · ') + ' 동의함' : '동의한 항목이 없습니다.';
+}
+
+/* 체크 → click, 해제 → input(false).
+   두 경로 모두 app.py 의 /api/act 가 이미 지원하는 동작이다. */
+document.querySelectorAll('.consent-box').forEach(box => {
+  box.addEventListener('change', async () => {
+    clearFlash();
+    try {
+      if (box.checked) await API.act('click', box.id);
+      else             await API.act('input', box.id, false);
+      renderSummary();
+    } catch (e) {
+      box.checked = !box.checked;   // 서버가 거절하면 화면도 되돌린다
+      flash(e.message, 'bad');
+    }
+  });
+});
+
+document.getElementById('btn_agree_all').addEventListener('click', async (e) => {
+  await withBusy(e.currentTarget, '처리 중…', async () => {
+    try {
+      await API.act('click', 'btn_agree_all');
+      BOXES.forEach(id => { document.getElementById(id).checked = true; });
+      renderSummary();
+      flash('모든 항목에 동의했습니다.', 'ok');
+    } catch (err) { flash(err.message, 'bad'); }
+  });
+});
+
+document.getElementById('btn-none').addEventListener('click', async (e) => {
+  await withBusy(e.currentTarget, '처리 중…', async () => {
+    try {
+      for (const id of BOXES) await API.act('input', id, false);
+      BOXES.forEach(id => { document.getElementById(id).checked = false; });
+      renderSummary();
+      flash('동의를 모두 해제했습니다.', 'ok');
+    } catch (err) { flash(err.message, 'bad'); }
+  });
+});
+
+renderSummary();
+</script>
 {% endblock %}

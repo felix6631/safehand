@@ -1,16 +1,124 @@
 {% extends "base.html" %}
 {% block content %}
-<form id="transfer-form" onsubmit="return false;">
-  <label for="recipient">받는 사람
-    <select id="recipient">
-      {% for p in state.registered_payees %}
-      <option value="{{ p }}">{{ p }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <label for="amount">금액
-    <input id="amount" type="text" value="{{ state.form.amount }}">
-  </label>
-  <button id="btn_transfer">이체하기</button>
-</form>
+
+<div class="card">
+  <form id="transfer-form" novalidate>
+    <div class="field">
+      <label for="recipient">받는 사람</label>
+      <select id="recipient" name="recipient">
+        <option value="">— 선택하세요 —</option>
+        {% for p in state.registered_payees %}
+        <option value="{{ p }}" {% if p == state.form.recipient %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+        <option value="__manual__">직접 입력 (등록되지 않은 계좌)</option>
+      </select>
+      <p class="hint">등록된 계좌 {{ state.registered_payees | length }}곳</p>
+    </div>
+
+    <div class="field" id="manual-field" hidden>
+      <label for="manual-recipient">받는 사람 직접 입력</label>
+      <input id="manual-recipient" type="text" autocomplete="off" placeholder="예: 302-****-1234">
+      <p class="hint">등록되지 않은 계좌로는 보낼 수 없습니다.</p>
+    </div>
+
+    <div class="field">
+      <label for="amount">금액 (원)</label>
+      <input id="amount" name="amount" type="text" inputmode="numeric" autocomplete="off"
+             value="{{ state.form.amount }}" placeholder="예: 50000">
+      <p class="hint">
+        쓸 수 있는 잔액: <span class="money">{{ "{:,}".format(state.balance) }}원</span>
+        · 오늘 이체 누적: <span class="money">{{ "{:,}".format(state.daily_transferred) }}원</span>
+      </p>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" id="btn_transfer">이체하기</button>
+      <button type="button" class="ghost" id="btn-clear">지우기</button>
+    </div>
+  </form>
+</div>
+
+<!-- 비가역 행동 직전 확인 단계 -->
+<div class="card" id="confirm-card" hidden>
+  <h2>이대로 보낼까요?</h2>
+  <p class="big-money money" id="confirm-line"></p>
+  <p class="hint">보내고 나면 되돌릴 수 없습니다.</p>
+  <div class="btn-row">
+    <button type="button" id="btn-confirm">네, 보냅니다</button>
+    <button type="button" class="ghost" id="btn-cancel">아니요, 취소</button>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script>
+const recipientEl  = document.getElementById('recipient');
+const manualField  = document.getElementById('manual-field');
+const manualEl     = document.getElementById('manual-recipient');
+const amountEl     = document.getElementById('amount');
+const confirmCard  = document.getElementById('confirm-card');
+
+/** '직접 입력'을 고르면 자유 입력란이 열린다.
+    이 경로는 미등록 수취인이므로 사이트가 거절한다 — 거절 흐름 자체가 시연 소재다. */
+recipientEl.addEventListener('change', () => {
+  clearFlash();
+  const manual = recipientEl.value === '__manual__';
+  manualField.hidden = !manual;
+  if (manual) manualEl.focus();
+});
+
+/** 실제로 서버에 보낼 수취인 값 */
+function currentRecipient() {
+  return recipientEl.value === '__manual__' ? manualEl.value.trim() : recipientEl.value;
+}
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  recipientEl.value = ''; manualEl.value = ''; amountEl.value = '';
+  manualField.hidden = true; confirmCard.hidden = true; clearFlash();
+});
+
+/* 1단계 — 검증 후 확인 카드 */
+document.getElementById('transfer-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  clearFlash();
+
+  const recipient = currentRecipient();
+  const amount = parseInt(String(amountEl.value).replace(/[,\s]/g, ''), 10);
+  if (!recipient)                return flash('받는 사람을 선택하거나 입력해 주세요.', 'warn');
+  if (!Number.isFinite(amount) || amount <= 0)
+                                 return flash('금액을 숫자로 입력해 주세요.', 'warn');
+
+  document.getElementById('confirm-line').textContent = `${recipient}에게 ${won(amount)}`;
+  confirmCard.hidden = false;
+  document.getElementById('btn-confirm').focus();
+});
+
+document.getElementById('btn-cancel').addEventListener('click', () => {
+  confirmCard.hidden = true;
+  document.getElementById('btn_transfer').focus();
+});
+
+/* 2단계 — 커밋 */
+document.getElementById('btn-confirm').addEventListener('click', async (e) => {
+  const recipient = currentRecipient();
+  const amount = parseInt(String(amountEl.value).replace(/[,\s]/g, ''), 10);
+  await withBusy(e.currentTarget, '보내는 중…', async () => {
+    try {
+      await API.act('select', 'recipient', recipient);
+      await API.act('input', 'amount', String(amount));
+      const res = await API.act('click', 'btn_transfer');
+
+      confirmCard.hidden = true;
+      amountEl.value = ''; recipientEl.value = ''; manualEl.value = '';
+      manualField.hidden = true;
+      await refreshBalance();
+      flash(`이체를 마쳤습니다. 남은 잔액은 ${won(res.balance)}입니다.`, 'ok');
+    } catch (err) {
+      confirmCard.hidden = true;
+      flash('이체하지 못했습니다 — ' + err.message, 'bad');
+    }
+  });
+});
+</script>
 {% endblock %}

@@ -1,10 +1,58 @@
 {% extends "base.html" %}
 {% block content %}
-{% if state.history %}
-  {% for h in state.history %}
-  <div class="history-item">{{ h.ts }} — {{ h.type }} {{ h.payee }} {{ "{:,}".format(h.amount) }}원</div>
-  {% endfor %}
-{% else %}
-  <p>거래내역이 없습니다.</p>
-{% endif %}
+
+<div class="card">
+  {% if state.history %}
+    <h2>거래 {{ state.history | length }}건</h2>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">일시</th>
+          <th scope="col">내용</th>
+          <th scope="col" style="text-align:right;">금액</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for h in state.history | reverse %}
+        <tr>
+          <td class="hint"><time datetime="{{ h.ts }}">{{ h.ts }}</time></td>
+          <td>
+            <strong>{{ h.payee }}</strong><br>
+            <span class="badge {{ 'ok' if h.type == 'PAY' else 'due' }}">
+              {{ '납부' if h.type == 'PAY' else '이체' }}
+            </span>
+          </td>
+          <td class="num">−{{ "{:,}".format(h.amount) }}원</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2"><strong>합계</strong></td>
+          <td class="num">−{{ "{:,}".format(state.history | sum(attribute='amount')) }}원</td>
+        </tr>
+      </tfoot>
+    </table>
+  {% else %}
+    <p class="empty">아직 거래내역이 없습니다.</p>
+    <div class="btn-row" style="justify-content:center;">
+      <button type="button" class="secondary" onclick="location.href='/bills'">청구서 보러 가기</button>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script>
+/* 서버가 준 UTC ISO 시각을 읽기 쉬운 현지 표기로 바꾼다. */
+document.querySelectorAll('time[datetime]').forEach(el => {
+  const d = new Date(el.getAttribute('datetime'));
+  if (isNaN(d)) return;
+  el.textContent = d.toLocaleString('ko-KR', {
+    year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+});
+</script>
 {% endblock %}

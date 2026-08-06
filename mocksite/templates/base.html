@@ -2,26 +2,331 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }} — 모의 은행</title>
 <style>
-  body { font-family: sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-  nav a { margin-right: 1rem; }
-  .balance { font-size: 1.5rem; font-weight: bold; }
-  .bill, .history-item { border: 1px solid #ccc; padding: .5rem 1rem; margin-bottom: .5rem; }
-  .paid { color: #888; text-decoration: line-through; }
-  form label { display: block; margin-top: .75rem; }
-  button { margin-top: 1rem; padding: .5rem 1rem; }
+  /* 고대비 · 큰 글씨 — 고령층/저시력 사용자를 전제로 한 기본값 */
+  :root {
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --ink: #14181f;
+    --ink-soft: #4d5766;
+    --line: #c9d1dc;
+    --brand: #12457e;
+    --brand-ink: #ffffff;
+    --ok: #14663a;
+    --ok-bg: #e4f5ea;
+    --warn: #8a5a00;
+    --warn-bg: #fdf2dc;
+    --bad: #a1201a;
+    --bad-bg: #fdeceb;
+    --focus: #0b6bcb;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+    font-size: 18px;
+    line-height: 1.6;
+    color: var(--ink);
+    background: var(--bg);
+    margin: 0;
+    padding: 0 1rem 6rem;
+  }
+
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  /* 키보드/스크린리더 사용자용 건너뛰기 링크 */
+  .skip {
+    position: absolute; left: -9999px;
+    background: var(--brand); color: var(--brand-ink);
+    padding: .75rem 1rem; border-radius: 0 0 var(--radius) 0; z-index: 100;
+  }
+  .skip:focus { left: 0; top: 0; }
+
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  header.site {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
+    padding: 1rem 0 .75rem;
+    border-bottom: 3px solid var(--brand);
+    margin-bottom: 1rem;
+  }
+  .brand { font-size: 1.15rem; font-weight: 700; color: var(--brand); }
+  .brand span { font-weight: 400; color: var(--ink-soft); font-size: .95rem; }
+
+  .balance-chip {
+    background: var(--card); border: 2px solid var(--line);
+    border-radius: 999px; padding: .35rem 1rem;
+    font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .balance-chip .label { font-weight: 400; color: var(--ink-soft); margin-right: .4rem; font-size: .9rem; }
+
+  nav.site { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
+  nav.site a {
+    display: block; padding: .55rem 1rem;
+    background: var(--card); border: 2px solid var(--line);
+    border-radius: var(--radius);
+    color: var(--ink); text-decoration: none; font-weight: 600;
+  }
+  nav.site a:hover { border-color: var(--brand); color: var(--brand); }
+  nav.site a[aria-current="page"] { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+
+  h1 { font-size: 1.75rem; margin: 0 0 1.25rem; }
+  h2 { font-size: 1.2rem; margin: 0 0 .75rem; }
+
+  .card {
+    background: var(--card); border: 2px solid var(--line);
+    border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
+  }
+
+  /* 폼 요소 — 터치/저시력 사용자를 위해 충분히 크게 */
+  label { display: block; font-weight: 700; margin-bottom: .4rem; }
+  .field { margin-bottom: 1.25rem; }
+  .hint { font-weight: 400; color: var(--ink-soft); font-size: .95rem; margin: .3rem 0 0; }
+
+  input[type=text], input[type=number], select {
+    width: 100%; font: inherit; font-size: 1.15rem;
+    padding: .7rem .8rem;
+    border: 2px solid var(--line); border-radius: var(--radius);
+    background: #fff; color: var(--ink);
+  }
+  input[type=text]:focus, select:focus { border-color: var(--focus); }
+  input[type=checkbox] { width: 1.5rem; height: 1.5rem; accent-color: var(--brand); }
+
+  button {
+    font: inherit; font-weight: 700; font-size: 1.05rem;
+    padding: .75rem 1.4rem; border-radius: var(--radius);
+    border: 2px solid var(--brand); background: var(--brand); color: var(--brand-ink);
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.12); }
+  button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+  button.secondary { background: var(--card); color: var(--brand); }
+  button.ghost {
+    background: transparent; border-color: var(--line); color: var(--ink-soft);
+    font-size: .95rem; padding: .45rem .9rem;
+  }
+  .btn-row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; }
+
+  .money { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .big-money { font-size: 2rem; }
+
+  /* 상태 배지 */
+  .badge {
+    display: inline-block; font-size: .85rem; font-weight: 700;
+    padding: .15rem .6rem; border-radius: 999px; border: 2px solid;
+  }
+  .badge.ok { color: var(--ok); background: var(--ok-bg); border-color: var(--ok); }
+  .badge.due { color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
+
+  /* 알림 메시지 */
+  .msg { padding: .9rem 1.1rem; border-radius: var(--radius); border: 2px solid; margin-bottom: 1rem; font-weight: 600; }
+  .msg.ok  { color: var(--ok);   background: var(--ok-bg);   border-color: var(--ok); }
+  .msg.bad { color: var(--bad);  background: var(--bad-bg);  border-color: var(--bad); }
+  .msg.warn{ color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
+  .msg[hidden] { display: none; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: .7rem .5rem; border-bottom: 1px solid var(--line); }
+  th { font-size: .9rem; color: var(--ink-soft); text-transform: none; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  .empty { color: var(--ink-soft); text-align: center; padding: 2rem 1rem; }
+
+  /* ── 시연 도구막대 : 심사 시연용 컨트롤 ─────────────────────────── */
+  .demobar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    background: #1c222c; color: #e8ecf2;
+    border-top: 3px solid #3a4454;
+  }
+  .demobar .inner {
+    max-width: 720px; margin: 0 auto; padding: .6rem 1rem;
+    display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+  }
+  .demobar .title { font-size: .85rem; font-weight: 700; color: #9fb0c6; margin-right: auto; }
+  .demobar button {
+    background: #2c3543; border: 2px solid #47536b;
+    color: #e8ecf2; font-size: .9rem; padding: .4rem .85rem;
+  }
+  .demobar button[aria-pressed="true"] { background: var(--bad); border-color: var(--bad); color: #fff; }
+
+  .peek { display: none; max-width: 720px; margin: 0 auto; padding: 0 1rem 1rem; }
+  .peek.open { display: block; }
+  .peek h3 { font-size: .95rem; margin: .8rem 0 .4rem; color: #9fb0c6; }
+  .peek pre {
+    background: #11161d; color: #d6e2f0; border: 1px solid #3a4454; border-radius: 8px;
+    padding: .8rem; font-size: .82rem; line-height: 1.5;
+    max-height: 15rem; overflow: auto; white-space: pre-wrap; word-break: break-all; margin: 0;
+  }
+  .peek .tainted { color: #ff8a80; font-weight: 700; }
+  .peek .note { font-size: .82rem; color: #9fb0c6; margin: .5rem 0 0; }
+
+  /* 공격 모드에서 화면에 심어지는 숨은 지시문.
+     사람 눈에는 보이지 않지만 DOM(=AI가 읽는 텍스트)에는 존재한다. */
+  .injection { color: #ffffff; background: #ffffff; font-size: 9px; user-select: none; }
+  body.reveal-injection .injection {
+    color: var(--bad) !important; background: var(--bad-bg) !important;
+    font-size: 1rem !important; font-weight: 700;
+    display: block; padding: .8rem 1rem; margin: 1rem 0;
+    border: 3px dashed var(--bad); border-radius: var(--radius);
+  }
+
+  @media (max-width: 520px) {
+    body { font-size: 17px; }
+    h1 { font-size: 1.45rem; }
+    .big-money { font-size: 1.6rem; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .msg { transition: opacity .15s ease; }
+  }
 </style>
 </head>
 <body>
-<nav>
-  <a href="/home">내 계좌</a>
-  <a href="/bills">청구서</a>
-  <a href="/transfer">이체</a>
-  <a href="/history">거래내역</a>
-  <a href="/consent">약관</a>
-</nav>
-<h1>{{ title }}</h1>
-{% block content %}{% endblock %}
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+
+<div class="wrap">
+  <header class="site">
+    <div class="brand">모의 은행 <span>SafeHand 시연 환경</span></div>
+    <div class="balance-chip"><span class="label">잔액</span><span id="hdr-balance">{{ "{:,}".format(state.balance) }}원</span></div>
+  </header>
+
+  <nav class="site" aria-label="주요 메뉴">
+    <a href="/home"     {% if state.page == '/home'     %}aria-current="page"{% endif %}>내 계좌</a>
+    <a href="/bills"    {% if state.page == '/bills'    %}aria-current="page"{% endif %}>청구서</a>
+    <a href="/pay"      {% if state.page == '/pay'      %}aria-current="page"{% endif %}>납부</a>
+    <a href="/transfer" {% if state.page == '/transfer' %}aria-current="page"{% endif %}>이체</a>
+    <a href="/history"  {% if state.page == '/history'  %}aria-current="page"{% endif %}>거래내역</a>
+    <a href="/consent"  {% if state.page == '/consent'  %}aria-current="page"{% endif %}>약관</a>
+  </nav>
+
+  <main id="main">
+    <h1>{{ title }}</h1>
+    <!-- 모든 페이지가 공유하는 알림 영역 (스크린리더 즉시 통지) -->
+    <p class="msg" id="flash" role="status" aria-live="assertive" hidden></p>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<!-- ── 시연 도구막대 ─────────────────────────────────────────────── -->
+<div class="demobar">
+  <div class="peek" id="peek">
+    <h3>AI(지능 계층)가 보는 화면 — 오염 가능</h3>
+    <pre id="peek-obs">불러오는 중…</pre>
+    <h3>커널이 보는 사실 — 오염 불가능</h3>
+    <pre id="peek-state">불러오는 중…</pre>
+    <p class="note">같은 페이지를 두 계층이 서로 다르게 본다. 커널은 화면 텍스트가 아니라 구조화된 사실만 판정 근거로 쓴다(R5).</p>
+  </div>
+  <div class="inner">
+    <span class="title">시연 도구</span>
+    <button type="button" id="btn-peek" aria-expanded="false" aria-controls="peek">두 계층의 시야 비교</button>
+    <button type="button" id="btn-reveal" aria-pressed="false">숨은 지시문 표시</button>
+    <button type="button" id="btn-attack" aria-pressed="{{ 'true' if state.attack_mode else 'false' }}">
+      공격 모드 {{ '켜짐' if state.attack_mode else '꺼짐' }}
+    </button>
+    <button type="button" id="btn-reset">초기화</button>
+  </div>
+</div>
+
+<script>
+/* ────────────────────────────────────────────────────────────────
+   mocksite 공통 스크립트.
+   화면의 모든 조작은 app.py 가 이미 제공하는 /api/* 를 그대로 호출한다.
+   즉 사람이 클릭하는 경로와 실행 계층이 호출하는 경로가 완전히 동일하다.
+   ──────────────────────────────────────────────────────────────── */
+const API = {
+  async _post(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body || {})
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* 본문 없음 */ }
+    if (!res.ok || data.ok === false) {
+      throw new Error(data.error || '요청을 처리하지 못했습니다.');
+    }
+    return data;
+  },
+  act(action, target, value) { return API._post('/api/act', {action, target, value}); },
+  reset()                    { return API._post('/api/reset'); },
+  attack(on)                 { return API._post('/api/attack', {on}); },
+  stateView()                { return fetch('/api/state_view').then(r => r.json()); },
+  observation()              { return fetch('/api/observation').then(r => r.json()); }
+};
+
+const won = n => Number(n).toLocaleString('ko-KR') + '원';
+
+/** 상단 알림 영역에 메시지를 띄운다. kind: ok | bad | warn */
+function flash(text, kind) {
+  const el = document.getElementById('flash');
+  el.className = 'msg ' + (kind || 'ok');
+  el.textContent = text;
+  el.hidden = false;
+  el.scrollIntoView({block: 'nearest'});
+}
+function clearFlash() { document.getElementById('flash').hidden = true; }
+
+/** 헤더의 잔액 표시를 서버 사실값으로 다시 맞춘다. */
+async function refreshBalance() {
+  try {
+    const s = await API.stateView();
+    document.getElementById('hdr-balance').textContent = won(s.balance);
+    return s;
+  } catch (e) { /* 표시용이므로 실패해도 무시 */ }
+}
+
+/** 버튼을 처리중 상태로 잠갔다가 되돌린다 (이중 제출 방지). */
+async function withBusy(btn, label, fn) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = label;
+  try { return await fn(); }
+  finally { btn.disabled = false; btn.textContent = original; }
+}
+
+/* ── 시연 도구막대 동작 ─────────────────────────────────────────── */
+document.getElementById('btn-peek').addEventListener('click', async (e) => {
+  const peek = document.getElementById('peek');
+  const open = peek.classList.toggle('open');
+  e.currentTarget.setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  const [obs, st] = await Promise.all([API.observation(), API.stateView()]);
+  // 숨겨진 인젝션 문구가 AI 쪽 시야에만 존재한다는 점을 색으로 드러낸다.
+  const pre = document.getElementById('peek-obs');
+  pre.textContent = '';
+  obs.raw_text.split('\n').forEach(line => {
+    const span = document.createElement('span');
+    if (line.startsWith('[시스템')) span.className = 'tainted';
+    span.textContent = line + '\n';
+    pre.appendChild(span);
+  });
+  document.getElementById('peek-state').textContent = JSON.stringify(st, null, 2);
+});
+
+document.getElementById('btn-reveal').addEventListener('click', (e) => {
+  const on = document.body.classList.toggle('reveal-injection');
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+});
+
+document.getElementById('btn-attack').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const next = btn.getAttribute('aria-pressed') !== 'true';
+  await API.attack(next);
+  location.reload();
+});
+
+document.getElementById('btn-reset').addEventListener('click', async (e) => {
+  await withBusy(e.currentTarget, '초기화 중…', async () => {
+    await API.reset();
+    location.href = '/home';
+  });
+});
+</script>
+{% block script %}{% endblock %}
 </body>
 </html>
