@@ -7,6 +7,7 @@
   "max_navigations": 3,
   "max_input_chars": 200,
   "night_hours": [0, 6],
+  "timezone_offset_hours": 9,
   "payee_fields": ["payee", "recipient", "account_no"],
   "amount_fields": ["amount", "transfer_amount"],
   "irreversible_targets": ["btn_pay", "btn_transfer", "btn_cancel_service", "btn_delete"],

@@ -74,11 +74,19 @@ class Planner:
         client = self._client_lazy()
         resp = client.messages.create(
             model=self.model,
-            max_tokens=1024,
+            # 최신 모델은 thinking을 따로 끄지 않으면 적응형 사고가 켜지고,
+            # max_tokens가 '사고 토큰 + 응답'을 함께 제한한다. 1024로는 명세 JSON이
+            # 중간에 잘려 파싱에 실패할 수 있어 넉넉히 잡는다.
+            max_tokens=4096,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_msg}],
         )
-        return resp.content[0].text
+        # content[0]이 항상 텍스트인 것은 아니다 — 사고가 켜지면 thinking 블록이 먼저 온다.
+        # thinking 블록에는 .text가 없으므로 반드시 종류를 보고 골라야 한다.
+        text = next((b.text for b in resp.content if b.type == "text"), None)
+        if text is None:
+            raise PlannerError(f"AI 응답에 텍스트가 없습니다 (stop_reason={resp.stop_reason})")
+        return text
 
     def _client_lazy(self):
         if self._client is None:

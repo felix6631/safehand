@@ -62,8 +62,12 @@ def _amount_att_and_spec(request_id, amount, balance=300000):
 
 
 def test_r9_night_transfer_matches_current_hour(kernel_real_config):
-    hour = datetime.datetime.now(datetime.timezone.utc).hour
-    is_night = 0 <= hour < 6
+    # 커널은 UTC 시각에 config의 timezone_offset_hours를 더해 '사용자 지역 시각'으로 판정한다.
+    cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    offset = cfg.get("timezone_offset_hours", 0)
+    start, end = cfg.get("night_hours", [0, 6])
+    hour = (datetime.datetime.now(datetime.timezone.utc).hour + offset) % 24
+    is_night = (start <= hour < end) if start <= end else (hour >= start or hour < end)
     att, spec = _amount_att_and_spec("r9-dynamic", 10000)
     out = kernel_real_config.call({"type": "verify", "spec": spec, "attestation": att})
     if is_night:

@@ -226,7 +226,9 @@ std::vector<RuleHit> rule_night_transfer(const RuleContext& ctx) {
 #else
     gmtime_r(&t, &tm_utc);
 #endif
-    int hour = tm_utc.tm_hour;
+    // UTC 시각을 사용자 지역 시각으로 옮긴다. 이 보정이 없으면 한국 기준 낮 09~15시가
+    // "심야"로 판정된다 (UTC 00~06시와 겹치기 때문).
+    int hour = ((tm_utc.tm_hour + ctx.cfg.timezone_offset_hours) % 24 + 24) % 24;
     bool is_night = (ctx.cfg.night_start_hour <= ctx.cfg.night_end_hour)
         ? (hour >= ctx.cfg.night_start_hour && hour < ctx.cfg.night_end_hour)
         : (hour >= ctx.cfg.night_start_hour || hour < ctx.cfg.night_end_hour);

@@ -145,9 +145,31 @@
   }
   .demobar .inner {
     max-width: 720px; margin: 0 auto; padding: .6rem 1rem;
-    display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+    display: flex; flex-direction: column; gap: .5rem;
   }
+  .demobar .controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
   .demobar .title { font-size: .85rem; font-weight: 700; color: #9fb0c6; margin-right: auto; }
+
+  /* 이 사이트에 보호 장치가 없다는 사실을 상시 고지한다.
+     mocksite는 '지켜지는 쪽'이 아니라 'AI가 조작할 대상'이기 때문이다. */
+  .unguarded {
+    margin: 0; font-size: .88rem; line-height: 1.5; color: #ffd479;
+    display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap;
+  }
+  .unguarded strong { color: #ffb020; }
+  .unguarded .linklike {
+    background: none; border: none; padding: 0; margin: 0;
+    color: #9fd0ff; text-decoration: underline; font-size: .88rem; font-weight: 700;
+    cursor: pointer;
+  }
+  .why { display: none; }
+  .why.open { display: block; }
+  .why .paths {
+    background: #11161d; border: 1px solid #3a4454; border-radius: 8px;
+    padding: .8rem; margin: 0 0 .5rem; font-size: .82rem; line-height: 1.8; color: #d6e2f0;
+  }
+  .why .paths .none { color: #ff8a80; font-weight: 700; }
+  .why .paths .guard { color: #7ee2a8; font-weight: 700; }
   .demobar button {
     background: #2c3543; border: 2px solid #47536b;
     color: #e8ecf2; font-size: .9rem; padding: .4rem .85rem;
@@ -221,7 +243,25 @@
     <pre id="peek-state">불러오는 중…</pre>
     <p class="note">같은 페이지를 두 계층이 서로 다르게 본다. 커널은 화면 텍스트가 아니라 구조화된 사실만 판정 근거로 쓴다(R5).</p>
   </div>
+  <div class="why" id="why">
+    <div class="paths">
+      사람 → 브라우저 → <b>이 사이트</b><span class="none">  ← 커널 없음 (지금 이 화면)</span><br>
+      AI &nbsp;→ <span class="guard">커널 R1~R9</span> → 실행 계층 → <b>이 사이트</b><span class="guard">  ← 판정 후 통과분만</span>
+    </div>
+    <p class="note">
+      이 모의 사이트는 보호받는 쪽이 아니라 <b>AI가 조작할 대상</b>입니다. 그래서 안전 규칙을 일부러 넣지 않았습니다.
+      화면에서 직접 누르면 한도·수취인·본인확인 검사가 전혀 없습니다.
+      R1~R9는 별도 프로세스인 C++ 커널에 있으며, AI가 만든 행동 명세를 실행 전에 판정합니다.
+      사이트가 스스로 막아버리면 “커널이 왜 필요한가”를 보일 수 없습니다.
+    </p>
+  </div>
   <div class="inner">
+    <p class="unguarded">
+      <strong>⚠ 이 사이트에는 안전장치가 없습니다.</strong>
+      <span>사람이 직접 누르는 경로는 커널을 거치지 않습니다.</span>
+      <button type="button" class="linklike" id="btn-why" aria-expanded="false" aria-controls="why">왜 그런가요?</button>
+    </p>
+    <div class="controls">
     <span class="title">시연 도구</span>
     <button type="button" id="btn-peek" aria-expanded="false" aria-controls="peek">두 계층의 시야 비교</button>
     <button type="button" id="btn-reveal" aria-pressed="false">숨은 지시문 표시</button>
@@ -229,6 +269,7 @@
       공격 모드 {{ '켜짐' if state.attack_mode else '꺼짐' }}
     </button>
     <button type="button" id="btn-reset">초기화</button>
+    </div>
   </div>
 </div>
 
@@ -306,6 +347,11 @@ document.getElementById('btn-peek').addEventListener('click', async (e) => {
     pre.appendChild(span);
   });
   document.getElementById('peek-state').textContent = JSON.stringify(st, null, 2);
+});
+
+document.getElementById('btn-why').addEventListener('click', (e) => {
+  const open = document.getElementById('why').classList.toggle('open');
+  e.currentTarget.setAttribute('aria-expanded', String(open));
 });
 
 document.getElementById('btn-reveal').addEventListener('click', (e) => {

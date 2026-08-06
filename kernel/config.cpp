@@ -45,6 +45,7 @@ Config Config::load(const std::string& rules_path) {
         cfg.night_start_hour = j["night_hours"][0].get<int>();
         cfg.night_end_hour = j["night_hours"][1].get<int>();
     }
+    cfg.timezone_offset_hours = j.value("timezone_offset_hours", 0);
     cfg.payee_fields = to_str_vec(j.value("payee_fields", json::array()));
     cfg.amount_fields = to_str_vec(j.value("amount_fields", json::array()));
     cfg.irreversible_targets = to_str_vec(j.value("irreversible_targets", json::array()));

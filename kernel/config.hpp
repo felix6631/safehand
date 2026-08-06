@@ -15,6 +15,9 @@ struct Config {
     int max_input_chars = 200;
     int night_start_hour = 0;
     int night_end_hour = 6;
+    // night_hours를 해석할 기준 시간대. 커널은 UTC로 시각을 읽으므로 이 값을 더해
+    // 사용자가 사는 지역의 시각으로 바꾼다 (한국 = 9). 0이면 UTC 그대로.
+    int timezone_offset_hours = 0;
     std::vector<std::string> payee_fields;
     std::vector<std::string> amount_fields;
     std::vector<std::string> irreversible_targets;

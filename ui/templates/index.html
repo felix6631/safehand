@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>세이프핸드 — AI 대리조작 안전 커널</title>
+<style>
+  :root {
+    --bg: #0f1319; --card: #1a212b; --line: #35404f;
+    --ink: #f2f6fa; --ink-soft: #a9b8c9;
+    --allow: #3ddc84; --allow-bg: #12301f;
+    --hold: #ffc043;  --hold-bg: #33270a;
+    --deny: #ff6b5e;  --deny-bg: #3a1512;
+    --brand: #6db3ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 1rem 4rem;
+    font-family: "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+    font-size: 22px; line-height: 1.6;
+    background: var(--bg); color: var(--ink);
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  :focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
+
+  header { padding: 1.5rem 0 1rem; border-bottom: 2px solid var(--line); margin-bottom: 1.5rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .3rem; }
+  h1 small { display: block; font-size: .8rem; font-weight: 400; color: var(--ink-soft); margin-top: .2rem; }
+  .status { display: flex; gap: 1.2rem; flex-wrap: wrap; margin-top: .8rem; font-size: .8rem; color: var(--ink-soft); }
+  .status b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; background: var(--allow); margin-right: .3rem; }
+  .dot.dead { background: var(--deny); }
+
+  .card { background: var(--card); border: 2px solid var(--line); border-radius: 14px; padding: 1.3rem; margin-bottom: 1.2rem; }
+  h2 { font-size: 1.05rem; margin: 0 0 .9rem; color: var(--ink-soft); font-weight: 700; }
+
+  button {
+    font: inherit; font-weight: 700; font-size: 1rem;
+    padding: .8rem 1.3rem; border-radius: 10px; cursor: pointer;
+    border: 2px solid var(--brand); background: var(--brand); color: #06121f;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  button.big { font-size: 1.25rem; padding: 1.1rem 2rem; }
+  button.danger { background: var(--deny); border-color: var(--deny); color: #2b0b08; }
+  .row { display: flex; gap: .8rem; flex-wrap: wrap; }
+
+  textarea {
+    width: 100%; font: inherit; font-size: 1.05rem; padding: .9rem;
+    background: #0b0f14; color: var(--ink); border: 2px solid var(--line); border-radius: 10px;
+    resize: vertical; min-height: 3.4rem;
+  }
+
+  .scenario { flex: 1 1 200px; text-align: left; background: #223044; border-color: #2f4159; color: var(--ink); }
+  .scenario small { display: block; font-weight: 400; font-size: .78rem; color: var(--ink-soft); margin-top: .25rem; }
+
+  /* 판정 화면 — 세 가지 상태를 색과 아이콘으로 즉시 구분한다 */
+  .verdict { border-width: 3px; }
+  .verdict.allow { border-color: var(--allow); background: var(--allow-bg); }
+  .verdict.hold  { border-color: var(--hold);  background: var(--hold-bg); }
+  .verdict.deny  { border-color: var(--deny);  background: var(--deny-bg); }
+  .verdict h2 { font-size: 2rem; margin-bottom: .6rem; color: var(--ink); }
+  .verdict.allow h2 { color: var(--allow); }
+  .verdict.hold  h2 { color: var(--hold); }
+  .verdict.deny  h2 { color: var(--deny); }
+
+  .headline { font-size: 2.6rem; font-weight: 800; line-height: 1.25; margin: .6rem 0; font-variant-numeric: tabular-nums; }
+  .subline { font-size: 1.2rem; color: var(--ink-soft); margin: 0 0 1rem; }
+
+  .reason { border-top: 1px solid var(--line); padding-top: .9rem; margin-top: .9rem; }
+  .reason .why { font-size: 1.15rem; font-weight: 700; margin: 0 0 .3rem; }
+  .rule-tag {
+    display: inline-block; font-size: .8rem; font-weight: 800; padding: .1rem .55rem;
+    border-radius: 999px; border: 2px solid currentColor; margin-right: .5rem;
+  }
+  .detail { font-size: .8rem; color: var(--ink-soft); font-family: Consolas, monospace; word-break: break-all; margin: .3rem 0 0; }
+
+  .steps { list-style: none; padding: 0; margin: .8rem 0 0; font-size: .9rem; }
+  .steps li { padding: .45rem 0; border-bottom: 1px solid var(--line); display: flex; gap: .6rem; align-items: baseline; }
+  .steps .seq { color: var(--ink-soft); font-variant-numeric: tabular-nums; flex: none; }
+  .steps .irr { color: var(--hold); font-weight: 700; font-size: .8rem; }
+  code { background: #0b0f14; padding: .1rem .4rem; border-radius: 5px; font-size: .88rem; }
+
+  .elapsed { font-size: .8rem; color: var(--ink-soft); margin-top: .8rem; }
+  .audit { font-size: .85rem; }
+  .audit li { padding: .5rem 0; border-bottom: 1px solid var(--line); list-style: none; }
+  .audit ul { padding: 0; margin: 0; }
+  .muted { color: var(--ink-soft); }
+  [hidden] { display: none !important; }
+  .err { border-color: var(--deny); color: var(--deny); }
+  .spinner { font-size: 1rem; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>세이프핸드
+    <small>AI가 사용자를 대신해 조작할 때, 그 AI를 신뢰하지 않는 전제로 모든 행동을 사전 검증합니다.</small>
+  </h1>
+  <div class="status">
+    <span><span class="dot" id="kernel-dot"></span>커널 <b id="kernel-state">확인 중…</b></span>
+    <span>모드 <b id="mode">—</b></span>
+    <span>잔액 <b id="balance">—</b></span>
+  </div>
+</header>
+
+<p class="card err" id="error" role="alert" hidden></p>
+
+<div class="card">
+  <h2>시연 시나리오</h2>
+  <div class="row">
+    {% for key, s in scenarios.items() %}
+    <button type="button" class="scenario" data-scenario="{{ key }}">
+      {{ s.label }}
+      <small>"{{ s.instruction }}"</small>
+    </button>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>직접 지시하기</h2>
+  <label for="instruction" class="muted" style="font-size:.85rem;">AI에게 자연어로 시킵니다. 실행 전에 커널이 먼저 검사합니다.</label>
+  <textarea id="instruction" rows="2" placeholder="예) 이번 달 전기요금 좀 내줘"></textarea>
+  <div class="row" style="margin-top:.8rem;">
+    <button type="button" id="btn-run">AI에게 시키기</button>
+    <button type="button" class="ghost" id="btn-audit">오늘 AI가 한 일</button>
+  </div>
+  {% if live %}
+  <p class="muted" style="font-size:.8rem; margin:.8rem 0 0;">
+    실시간 LLM 모드입니다. 자유 입력은 실제 모델이 계획을 세우고, 커널이 그 계획을 검사합니다.
+    위의 1~3막 버튼은 시연 안정성을 위해 항상 저장된 계획을 재생합니다.
+  </p>
+  {% else %}
+  <p class="muted" style="font-size:.8rem; margin:.8rem 0 0;">
+    오프라인 재생 모드입니다. 저장해 둔 1~3막만 동작하며 네트워크도 API 키도 필요 없습니다.
+    자유 입력을 쓰려면 프로젝트 루트 <code>.env</code>에 <code>ANTHROPIC_API_KEY</code>를 넣고 다시 실행하세요.
+  </p>
+  {% endif %}
+</div>
+
+<p class="spinner" id="busy" hidden aria-live="polite">커널이 검사하는 중…</p>
+
+<!-- 판정 결과 -->
+<div class="card verdict" id="verdict" hidden aria-live="assertive">
+  <h2 id="v-title"></h2>
+  <p class="headline" id="v-headline"></p>
+  <p class="subline" id="v-subline"></p>
+
+  <div id="v-reasons"></div>
+
+  <ul class="steps" id="v-steps"></ul>
+
+  <div class="row" id="v-actions" style="margin-top:1.2rem;"></div>
+  <p class="elapsed" id="v-elapsed"></p>
+</div>
+
+<div class="card" id="audit-card" hidden>
+  <h2>오늘 AI가 한 일</h2>
+  <div class="audit" id="audit-body"></div>
+</div>
+
+</div>
+
+<script>
+/* ─────────────────────────────────────────────────────────────
+   화면은 판정하지 않는다. 커널이 내린 판정을 사람이 읽을 수 있게 옮길 뿐이다.
+   ───────────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const won = n => (n === null || n === undefined || n === '') ? '—'
+                : Number(String(n).replace(/[^\d-]/g, '')).toLocaleString('ko-KR') + '원';
+
+let lastRequestId = null;
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body ? 'POST' : 'GET',
+    headers: body ? {'Content-Type': 'application/json'} : undefined,
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(() => ({ok: false, error: '응답을 읽을 수 없습니다.'}));
+  if (!data.ok) throw new Error(data.error || '요청이 실패했습니다.');
+  return data;
+}
+
+function showError(msg) {
+  $('error').textContent = msg;
+  $('error').hidden = false;
+}
+function clearError() { $('error').hidden = true; }
+
+function busy(on) {
+  $('busy').hidden = !on;
+  document.querySelectorAll('button').forEach(b => { b.disabled = on; });
+}
+
+async function refreshStatus() {
+  try {
+    const s = await api('/api/status');
+    $('kernel-state').textContent = s.kernel_alive ? '정상' : '중단됨';
+    $('kernel-dot').className = 'dot' + (s.kernel_alive ? '' : ' dead');
+    $('mode').textContent = s.mode;
+    $('balance').textContent = won(s.balance);
+  } catch (e) {
+    $('kernel-state').textContent = '연결 실패';
+    $('kernel-dot').className = 'dot dead';
+    showError(e.message);
+  }
+}
+
+/* ── 판정 렌더링 ───────────────────────────────────────────── */
+function renderReasons(triggered) {
+  if (!triggered || !triggered.length) return '';
+  return '<div class="reason">' + triggered.map(t => `
+    <p class="why"><span class="rule-tag">${t.rule_id}</span>${t.message_ko}</p>
+    <p class="detail">${t.detail || ''}</p>
+  `).join('') + '</div>';
+}
+
+function renderSteps(steps) {
+  if (!steps || !steps.length) return '';
+  return steps.map(s => `
+    <li>
+      <span class="seq">${s.seq}</span>
+      <span>${s.action} <code>${s.target}</code>${s.value !== null && s.value !== undefined ? ' = <code>' + s.value + '</code>' : ''}</span>
+      ${s.irreversible ? '<span class="irr">되돌릴 수 없음</span>' : ''}
+    </li>`).join('');
+}
+
+function render(data) {
+  const v = data.verdict || data.resolve || {};
+  const plan = data.plan || {};
+  const box = $('verdict');
+  lastRequestId = plan.request_id || lastRequestId;
+
+  box.hidden = false;
+  $('v-steps').innerHTML = '';
+  $('v-actions').innerHTML = '';
+  $('v-elapsed').textContent = v.elapsed_us !== undefined
+    ? `커널 판정 소요 ${(v.elapsed_us / 1000).toFixed(2)}ms` : '';
+
+  if (data.status === 'denied') {
+    box.className = 'card verdict deny';
+    $('v-title').textContent = '🛑 막았습니다.';
+    $('v-headline').textContent = plan.payee
+      ? `${plan.payee}에게 ${won(plan.amount)}`
+      : (plan.intent || 'AI의 요청을 거부했습니다');
+    $('v-subline').textContent = '돈은 나가지 않았습니다.';
+    $('v-reasons').innerHTML = renderReasons(v.triggered);
+    $('v-steps').innerHTML = renderSteps(plan.steps);
+
+  } else if (data.status === 'hold') {
+    box.className = 'card verdict hold';
+    $('v-title').textContent = '✋ 확인이 필요합니다.';
+    $('v-headline').textContent = `${plan.payee || ''} ${won(plan.amount)}`.trim();
+    $('v-subline').textContent = '이대로 진행할까요? 되돌릴 수 없는 행동입니다.';
+    $('v-reasons').innerHTML = renderReasons(v.triggered);
+    $('v-steps').innerHTML = renderSteps(plan.steps);
+
+    const yes = document.createElement('button');
+    yes.className = 'big'; yes.textContent = '네, 진행합니다';
+    yes.onclick = () => resolveHold(plan.request_id, v.challenge, true);
+    const no = document.createElement('button');
+    no.className = 'big ghost'; no.textContent = '아니요, 취소';
+    no.onclick = () => resolveHold(plan.request_id, v.challenge, false);
+    $('v-actions').append(yes, no);
+
+  } else if (data.status === 'executed') {
+    box.className = 'card verdict allow';
+    $('v-title').textContent = '✅ 처리했습니다.';
+    $('v-headline').textContent = plan.payee ? `${plan.payee} ${won(plan.amount)}` : (plan.intent || '완료');
+    $('v-subline').textContent = `남은 잔액 ${won(data.balance)}`;
+    $('v-reasons').innerHTML = renderReasons(v.triggered);
+    $('v-steps').innerHTML = renderSteps(plan.steps);
+
+    const undo = document.createElement('button');
+    undo.className = 'danger'; undo.textContent = '되돌리기';
+    undo.onclick = () => doUndo(plan.request_id);
+    $('v-actions').append(undo);
+
+  } else if (data.status === 'halted') {
+    box.className = 'card verdict deny';
+    $('v-title').textContent = '⚠ 실행 도중 멈췄습니다.';
+    $('v-headline').textContent = '화면이 도중에 바뀌었습니다';
+    $('v-subline').textContent = '승인한 시점과 실행 시점의 상태가 달라 중단했습니다.';
+    $('v-reasons').innerHTML = renderReasons((data.step_check || {}).triggered);
+
+  } else {
+    box.className = 'card verdict';
+    $('v-title').textContent = data.status;
+    $('v-headline').textContent = '';
+    $('v-subline').textContent = '';
+    $('v-reasons').innerHTML = '';
+  }
+  box.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+
+/* ── 동작 ─────────────────────────────────────────────────── */
+async function runScenario(scenario) {
+  clearError(); busy(true);
+  try {
+    await api('/api/prepare', {scenario});          // 캐시된 명세의 전제 상태를 맞춘다
+    render(await api('/api/run', {scenario}));
+  } catch (e) { showError(e.message); }
+  finally { busy(false); refreshStatus(); }
+}
+
+async function runFreeText() {
+  const instruction = $('instruction').value.trim();
+  if (!instruction) return showError('지시 내용을 입력해 주세요.');
+  clearError(); busy(true);
+  try {
+    render(await api('/api/run', {instruction}));
+  } catch (e) { showError(e.message); }
+  finally { busy(false); refreshStatus(); }
+}
+
+async function resolveHold(request_id, challenge, approve) {
+  clearError(); busy(true);
+  try {
+    const data = await api('/api/resolve', {request_id, challenge, approve});
+    if (!approve && data.status === 'denied') {
+      data.status = 'denied';
+      data.verdict = {triggered: [{rule_id: 'R2', message_ko: '사용자가 취소했습니다.', detail: ''}]};
+    }
+    render(data);
+  } catch (e) { showError(e.message); }
+  finally { busy(false); refreshStatus(); }
+}
+
+async function doUndo(request_id) {
+  clearError(); busy(true);
+  try {
+    const data = await api('/api/undo', {request_id});
+    if (data.status === 'no_snapshot') showError('되돌릴 스냅샷이 없습니다.');
+    else {
+      $('v-title').textContent = '↩ 되돌렸습니다.';
+      $('v-subline').textContent = `잔액이 ${won(data.balance)}으로 복구되었습니다.`;
+      $('v-actions').innerHTML = '';
+    }
+  } catch (e) { showError(e.message); }
+  finally { busy(false); refreshStatus(); }
+}
+
+async function loadAudit() {
+  clearError();
+  try {
+    const data = await api('/api/audit');
+    $('audit-card').hidden = false;
+    const badge = s => ({'정상':'--allow', '차단됨':'--deny', '보류':'--hold', '되돌림':'--brand'}[s] || '--ink-soft');
+    $('audit-body').innerHTML = data.items.length
+      ? '<ul>' + data.items.map(i => `
+          <li>
+            <b style="color:var(${badge(i.status)})">${i.status}</b>
+            &nbsp;${i.user_intent || i.request_id}
+            ${i.rule_ids.length ? '<span class="muted">· ' + i.rule_ids.join(', ') + '</span>' : ''}
+            <span class="muted" style="font-size:.8rem;"> · ${new Date(i.ts).toLocaleTimeString('ko-KR')}</span>
+          </li>`).join('') + '</ul>'
+      : '<p class="muted">오늘 기록이 없습니다.</p>';
+  } catch (e) { showError(e.message); }
+}
+
+document.querySelectorAll('[data-scenario]').forEach(b =>
+  b.addEventListener('click', () => runScenario(b.dataset.scenario)));
+$('btn-run').addEventListener('click', runFreeText);
+$('btn-audit').addEventListener('click', loadAudit);
+
+refreshStatus();
+</script>
+</body>
+</html>
