@@ -83,7 +83,12 @@ json handle_verify(const json& in, Config& cfg, Ledger& ledger, Audit& audit, co
 
     SchemaResult sr = parse_and_validate_spec(in);
     if (!sr.ok) {
-        json out = deny_r1(request_id, "AI가 보낸 지시를 이해할 수 없어 막았습니다.", sr.detail);
+        // 빈 계획은 AI가 형식을 어긴 게 아니라 "할 수 없다"고 답한 것이다.
+        // 판정은 똑같이 DENY지만, 사용자에게 "다시 말해보라"고 오해시키면 안 된다.
+        const char* msg = sr.empty_plan
+            ? "AI가 이 요청을 수행할 방법을 찾지 못했습니다."
+            : "AI가 보낸 지시를 이해할 수 없어 막았습니다.";
+        json out = deny_r1(request_id, msg, sr.detail);
         audit.record("VERDICT", out);
         return out;
     }

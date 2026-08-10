@@ -61,7 +61,9 @@ SchemaResult parse_and_validate_spec(const json& in) {
 
     if (!j.contains("steps") || !j["steps"].is_array() || j["steps"].empty()) {
         result.ok = false;
-        result.detail = "steps가 없거나 비어 있습니다";
+        result.empty_plan = j.contains("steps") && j["steps"].is_array(); // 배열이되 비어 있음
+        result.detail = result.empty_plan ? "steps가 비어 있습니다 (AI가 제안한 행동 없음)"
+                                          : "steps가 없거나 배열이 아닙니다";
         return result;
     }
 
