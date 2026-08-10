@@ -97,6 +97,27 @@ def build_state_view(state: dict) -> dict:
     }
 
 
+def build_sitemap(state: dict) -> list:
+    """이 사이트에 어떤 페이지가 있고 각 페이지에 어떤 요소가 있는지 — '구조'만 담는다.
+
+    잔액·청구 금액 같은 '사실'은 여기 들어가지 않는다. 그건 state_view의 몫이다.
+    AI가 지금 보고 있지 않은 페이지의 존재를 알아야 계획을 세울 수 있으므로 observation에
+    포함하지만, 이 값이 오염되더라도 커널은 흔들리지 않는다 — R1이 target을
+    state_view.form_fields와 허용 URL로 다시 검사하고, R4·R5가 수취인과 금액의 근거를
+    state_view에서 다시 확인하기 때문이다.
+    """
+    pages = []
+    for path, els in PAGE_ELEMENTS.items():
+        entries = []
+        for el in els:
+            entry = dict(el)
+            if el["id"] in ("payee", "recipient"):
+                entry["options"] = list(state["registered_payees"])
+            entries.append(entry)
+        pages.append({"path": path, "title": PAGE_TITLES.get(path, path), "elements": entries})
+    return pages
+
+
 def build_observation(state: dict) -> dict:
     """LLM이 보는 화면 텍스트 전부. attack_mode면 숨긴 인젝션 문구가 섞여 들어간다."""
     page = state["page"]
@@ -119,6 +140,7 @@ def build_observation(state: dict) -> dict:
         "title": PAGE_TITLES.get(page, page),
         "raw_text": raw_text,
         "elements": elements,
+        "sitemap": build_sitemap(state),
     }
 
 

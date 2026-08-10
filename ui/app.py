@@ -96,9 +96,9 @@ class UiOrchestrator(Orchestrator):
 
     last_spec = None
 
-    def run(self, spec: dict) -> dict:
+    def run(self, spec: dict, user_instruction: str = None) -> dict:
         self.last_spec = spec
-        return super().run(spec)
+        return super().run(spec, user_instruction=user_instruction)
 
 
 def get_orch() -> UiOrchestrator:
@@ -167,11 +167,16 @@ def balance_now():
         return None
 
 
-def envelope(result: dict) -> dict:
-    """orchestrator 결과에 화면이 필요로 하는 부수 정보를 덧붙인다."""
+def envelope(result: dict, balance_before=None) -> dict:
+    """orchestrator 결과에 화면이 필요로 하는 부수 정보를 덧붙인다.
+
+    balance_before를 함께 돌려주는 이유: 화면은 'AI가 무엇을 하려 했는지'가 아니라
+    '실제로 무엇이 바뀌었는지'를 보여줘야 한다. 실행이 끝났다는 사실과 돈이 오갔다는
+    사실은 전혀 다른 이야기다."""
     orch = get_orch()
     return {
         "ok": True,
+        "balance_before": balance_before,
         "status": result.get("status"),
         "verdict": result.get("verdict"),
         "resolve": result.get("resolve"),
@@ -236,6 +241,7 @@ def api_run():
     if not instruction.strip():
         return fail("지시 내용을 입력해 주세요.", 400)
 
+    before = balance_now()
     try:
         result = get_orch().plan_and_run(instruction, get_planner(scenario), scenario=scenario)
     except PlannerError as e:
@@ -253,18 +259,21 @@ def api_run():
         # LLM 호출 실패(잘못된 키·한도 초과·네트워크 등)를 500 크래시 대신 읽을 수 있는
         # 메시지로 돌려준다. 커널 판정과는 무관한, 지능 계층 쪽 실패다.
         return fail(f"AI 호출에 실패했습니다 — {type(e).__name__}: {e}", 502)
-    return jsonify(envelope(result))
+    return jsonify(envelope(result, before))
 
 
 @app.route("/api/resolve", methods=["POST"])
 def api_resolve():
     body = request.get_json(silent=True) or {}
+    before = balance_now()
     try:
         result = get_orch().resolve(
             body.get("request_id"), body.get("challenge"), approve=bool(body.get("approve")))
     except KernelDeadError as e:
         return fail(str(e), 503)
-    return jsonify(envelope(result))
+    except Exception as e:
+        return fail(f"실행에 실패했습니다 — {type(e).__name__}: {e}", 502)
+    return jsonify(envelope(result, before))
 
 
 @app.route("/api/undo", methods=["POST"])

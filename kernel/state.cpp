@@ -16,6 +16,8 @@ AttestationResult parse_attestation(const json& in) {
     att.att_version = a.value("att_version", "");
     att.state_hash = a.value("state_hash", "");
     att.hmac = a.value("hmac", "");
+    att.user_instruction = a.value("user_instruction", "");
+    att.instruction_hmac = a.value("instruction_hmac", "");
 
     if (!a.contains("state_view") || !a["state_view"].is_object()) {
         result.ok = false;

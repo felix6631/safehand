@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from agent.attestation import sign, state_hash
+from agent.attestation import sign, sign_instruction, state_hash
 
 
 class ExecutorError(Exception):
@@ -29,15 +29,25 @@ class Executor:
         r.raise_for_status()
         return r.json()
 
-    def attest(self) -> dict:
+    def attest(self, user_instruction: str = None) -> dict:
+        """현재 화면의 '사실'을 증언한다.
+
+        user_instruction이 주어지면 사용자가 실제로 한 말도 함께 증언한다. 이 값은
+        planner를 거치지 않고 orchestrator에서 곧장 넘어오므로(I3), AI는 여기에
+        손댈 수 없다 — 커널이 R5에서 금액의 근거로 쓸 수 있는 이유다.
+        """
         sv = self.get_state_view()
-        return {
+        att = {
             "att_version": "1.0",
             "captured_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "state_view": sv,
             "state_hash": state_hash(sv),
             "hmac": sign(self.secret, sv),
         }
+        if user_instruction:
+            att["user_instruction"] = user_instruction
+            att["instruction_hmac"] = sign_instruction(self.secret, user_instruction)
+        return att
 
     def act(self, action: str, target: str, value=None) -> dict:
         body = {"action": action, "target": target}

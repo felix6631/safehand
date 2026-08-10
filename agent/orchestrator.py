@@ -25,10 +25,12 @@ class Orchestrator:
             "state_hash": attestation["state_hash"],
         }
         spec = planner.plan(instruction, observation, state_hint, scenario=scenario)
-        return self.run(spec)
+        # 사용자의 원래 발화를 커널까지 그대로 들려보낸다. planner가 만든 spec과는
+        # 별개의 경로이므로, AI가 사용자의 말을 바꿔치기할 수 없다 (I3).
+        return self.run(spec, user_instruction=instruction)
 
-    def run(self, spec: dict) -> dict:
-        attestation = self.executor.attest()
+    def run(self, spec: dict, user_instruction: str = None) -> dict:
+        attestation = self.executor.attest(user_instruction=user_instruction)
         verdict = self.kernel.call({"type": "verify", "spec": spec, "attestation": attestation})
 
         if verdict["decision"] == "DENY":
