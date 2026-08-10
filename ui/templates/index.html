@@ -17,7 +17,7 @@
   body {
     margin: 0; padding: 0 1rem 4rem;
     font-family: "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
-    font-size: 22px; line-height: 1.6;
+    font-size: 24px; line-height: 1.6;
     background: var(--bg); color: var(--ink);
   }
   .wrap { max-width: 780px; margin: 0 auto; }
@@ -106,6 +106,9 @@
     <span>모드 <b id="mode">—</b></span>
     <span>잔액 <b id="balance">—</b></span>
   </div>
+  <div class="row" style="margin-top:.8rem;">
+    <button type="button" class="ghost" id="btn-voice" aria-pressed="true">🔊 음성 안내 켜짐</button>
+  </div>
 </header>
 
 <p class="card err" id="error" role="alert" hidden></p>
@@ -128,6 +131,7 @@
   <textarea id="instruction" rows="2" placeholder="예) 이번 달 전기요금 좀 내줘"></textarea>
   <div class="row" style="margin-top:.8rem;">
     <button type="button" id="btn-run">AI에게 시키기</button>
+    <button type="button" class="ghost" id="btn-mic" aria-pressed="false">🎤 음성으로 말하기</button>
     <button type="button" class="ghost" id="btn-audit">오늘 AI가 한 일</button>
   </div>
   {% if live %}
@@ -192,8 +196,73 @@ async function api(path, body) {
 function showError(msg) {
   $('error').textContent = msg;
   $('error').hidden = false;
+  speak('오류: ' + msg);
 }
 function clearError() { $('error').hidden = true; }
+
+/* ── 음성 안내 (TTS) ──────────────────────────────────────────
+   화면을 볼 수 없어도 판정 결과를 들을 수 있어야 한다. 판정 자체는 이미
+   화면(aria-live)과 커널 로그에 있으므로, 여기서는 그것을 사람 말로 옮겨 읽을 뿐이다. */
+let voiceOn = true;
+
+function speak(text) {
+  if (!voiceOn || !('speechSynthesis' in window) || !text) return;
+  window.speechSynthesis.cancel();  // 이전 발화가 남아있으면 끊고 새로 말한다
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'ko-KR';
+  utter.rate = 1.0;
+  window.speechSynthesis.speak(utter);
+}
+
+function speakVerdict(data) {
+  const v = data.verdict || data.resolve || {};
+  const plan = data.plan || {};
+  const money = plan.payee ? `${plan.payee}에게 ${won(plan.amount)}` : (plan.intent || '');
+  const reasons = (v.triggered || []).map(t => t.message_ko).join(' ');
+
+  if (data.status === 'denied') {
+    speak(`막았습니다. ${money}. 돈은 나가지 않았습니다. ${reasons}`);
+  } else if (data.status === 'hold') {
+    speak(`확인이 필요합니다. ${money}. 되돌릴 수 없는 행동입니다. 진행하시겠습니까?`);
+  } else if (data.status === 'executed') {
+    speak(`처리했습니다. ${money}. 남은 잔액 ${won(data.balance)}.`);
+  } else if (data.status === 'halted') {
+    speak('실행 도중 멈췄습니다. 승인한 시점과 실행 시점의 화면이 달라 중단했습니다.');
+  }
+}
+
+if (!('speechSynthesis' in window)) {
+  voiceOn = false;
+}
+
+/* ── 음성 입력 (STT) ─────────────────────────────────────────── */
+function startListening() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = $('btn-mic');
+  if (!SR) {
+    showError('이 브라우저는 음성 입력을 지원하지 않습니다. 직접 입력해 주세요.');
+    return;
+  }
+  const rec = new SR();
+  rec.lang = 'ko-KR';
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  btn.setAttribute('aria-pressed', 'true');
+  btn.textContent = '🎤 듣는 중…';
+
+  rec.onresult = (e) => {
+    $('instruction').value = e.results[0][0].transcript;
+  };
+  rec.onerror = (e) => {
+    if (e.error !== 'aborted') showError('음성 인식에 실패했습니다: ' + e.error);
+  };
+  rec.onend = () => {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = '🎤 음성으로 말하기';
+  };
+  rec.start();
+}
 
 function busy(on) {
   $('busy').hidden = !on;
@@ -330,6 +399,7 @@ function render(data) {
     $('v-reasons').innerHTML = '';
   }
   box.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  speakVerdict(data);
 }
 
 /* ── 동작 ─────────────────────────────────────────────────── */
@@ -401,6 +471,22 @@ document.querySelectorAll('[data-scenario]').forEach(b =>
   b.addEventListener('click', () => runScenario(b.dataset.scenario)));
 $('btn-run').addEventListener('click', runFreeText);
 $('btn-audit').addEventListener('click', loadAudit);
+$('btn-mic').addEventListener('click', startListening);
+
+const voiceBtn = $('btn-voice');
+if (!('speechSynthesis' in window)) {
+  voiceBtn.disabled = true;
+  voiceBtn.textContent = '🔇 이 브라우저는 음성 안내를 지원하지 않습니다';
+  voiceBtn.setAttribute('aria-pressed', 'false');
+} else {
+  voiceBtn.addEventListener('click', () => {
+    voiceOn = !voiceOn;
+    voiceBtn.setAttribute('aria-pressed', String(voiceOn));
+    voiceBtn.textContent = voiceOn ? '🔊 음성 안내 켜짐' : '🔇 음성 안내 꺼짐';
+    if (!voiceOn) window.speechSynthesis.cancel();
+    else speak('음성 안내를 켰습니다.');
+  });
+}
 
 refreshStatus();
 </script>
