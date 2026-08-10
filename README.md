@@ -93,7 +93,7 @@ safehand/
 └── run_all.py       # mocksite + ui + 커널 빌드를 한 번에
 ```
 
-각 계층이 왜 분리되어 있는지, R1~R9가 각각 무엇을 막는지는 [safehand-introduce.md](safehand-introduce.md)의 2~4절에 자세히 설명되어 있습니다.
+각 계층이 왜 분리되어 있는지, R1-R9가 각각 무엇을 막는지는 [safehand-introduce.md](safehand-introduce.md)의 2-4절에 자세히 설명되어 있습니다.
 
 ---
 
