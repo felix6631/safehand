@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mocksite",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["mocksite/app.py"],
+      "port": 5001
+    },
+    {
+      "name": "ui",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["ui/app.py"],
+      "port": 5000
+    }
+  ]
+}
