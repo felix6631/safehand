@@ -17,7 +17,7 @@
   body {
     margin: 0; padding: 0 1rem 4rem;
     font-family: "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
-    font-size: 22px; line-height: 1.6;
+    font-size: 24px; line-height: 1.6;
     background: var(--bg); color: var(--ink);
   }
   .wrap { max-width: 780px; margin: 0 auto; }
@@ -66,7 +66,9 @@
   .verdict.deny  h2 { color: var(--deny); }
 
   .headline { font-size: 2.6rem; font-weight: 800; line-height: 1.25; margin: .6rem 0; font-variant-numeric: tabular-nums; }
-  .subline { font-size: 1.2rem; color: var(--ink-soft); margin: 0 0 1rem; }
+  .subline { font-size: 1.2rem; color: var(--ink-soft); margin: 0 0 .5rem; }
+  .claim { font-size: 1rem; color: var(--ink-soft); margin: 0 0 1rem; font-style: italic; }
+  .claim:empty { display: none; }
 
   .reason { border-top: 1px solid var(--line); padding-top: .9rem; margin-top: .9rem; }
   .reason .why { font-size: 1.15rem; font-weight: 700; margin: 0 0 .3rem; }
@@ -104,6 +106,9 @@
     <span>모드 <b id="mode">—</b></span>
     <span>잔액 <b id="balance">—</b></span>
   </div>
+  <div class="row" style="margin-top:.8rem;">
+    <button type="button" class="ghost" id="btn-voice" aria-pressed="true">🔊 음성 안내 켜짐</button>
+  </div>
 </header>
 
 <p class="card err" id="error" role="alert" hidden></p>
@@ -126,6 +131,7 @@
   <textarea id="instruction" rows="2" placeholder="예) 이번 달 전기요금 좀 내줘"></textarea>
   <div class="row" style="margin-top:.8rem;">
     <button type="button" id="btn-run">AI에게 시키기</button>
+    <button type="button" class="ghost" id="btn-mic" aria-pressed="false">🎤 음성으로 말하기</button>
     <button type="button" class="ghost" id="btn-audit">오늘 AI가 한 일</button>
   </div>
   {% if live %}
@@ -148,6 +154,8 @@
   <h2 id="v-title"></h2>
   <p class="headline" id="v-headline"></p>
   <p class="subline" id="v-subline"></p>
+  <!-- AI의 '주장'은 시스템의 '사실'과 분명히 구분해서 보여준다 -->
+  <p class="claim" id="v-claim"></p>
 
   <div id="v-reasons"></div>
 
@@ -188,8 +196,73 @@ async function api(path, body) {
 function showError(msg) {
   $('error').textContent = msg;
   $('error').hidden = false;
+  speak('오류: ' + msg);
 }
 function clearError() { $('error').hidden = true; }
+
+/* ── 음성 안내 (TTS) ──────────────────────────────────────────
+   화면을 볼 수 없어도 판정 결과를 들을 수 있어야 한다. 판정 자체는 이미
+   화면(aria-live)과 커널 로그에 있으므로, 여기서는 그것을 사람 말로 옮겨 읽을 뿐이다. */
+let voiceOn = true;
+
+function speak(text) {
+  if (!voiceOn || !('speechSynthesis' in window) || !text) return;
+  window.speechSynthesis.cancel();  // 이전 발화가 남아있으면 끊고 새로 말한다
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'ko-KR';
+  utter.rate = 1.0;
+  window.speechSynthesis.speak(utter);
+}
+
+function speakVerdict(data) {
+  const v = data.verdict || data.resolve || {};
+  const plan = data.plan || {};
+  const money = plan.payee ? `${plan.payee}에게 ${won(plan.amount)}` : (plan.intent || '');
+  const reasons = (v.triggered || []).map(t => t.message_ko).join(' ');
+
+  if (data.status === 'denied') {
+    speak(`막았습니다. ${money}. 돈은 나가지 않았습니다. ${reasons}`);
+  } else if (data.status === 'hold') {
+    speak(`확인이 필요합니다. ${money}. 되돌릴 수 없는 행동입니다. 진행하시겠습니까?`);
+  } else if (data.status === 'executed') {
+    speak(`처리했습니다. ${money}. 남은 잔액 ${won(data.balance)}.`);
+  } else if (data.status === 'halted') {
+    speak('실행 도중 멈췄습니다. 승인한 시점과 실행 시점의 화면이 달라 중단했습니다.');
+  }
+}
+
+if (!('speechSynthesis' in window)) {
+  voiceOn = false;
+}
+
+/* ── 음성 입력 (STT) ─────────────────────────────────────────── */
+function startListening() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = $('btn-mic');
+  if (!SR) {
+    showError('이 브라우저는 음성 입력을 지원하지 않습니다. 직접 입력해 주세요.');
+    return;
+  }
+  const rec = new SR();
+  rec.lang = 'ko-KR';
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  btn.setAttribute('aria-pressed', 'true');
+  btn.textContent = '🎤 듣는 중…';
+
+  rec.onresult = (e) => {
+    $('instruction').value = e.results[0][0].transcript;
+  };
+  rec.onerror = (e) => {
+    if (e.error !== 'aborted') showError('음성 인식에 실패했습니다: ' + e.error);
+  };
+  rec.onend = () => {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = '🎤 음성으로 말하기';
+  };
+  rec.start();
+}
 
 function busy(on) {
   $('busy').hidden = !on;
@@ -238,24 +311,44 @@ function render(data) {
   box.hidden = false;
   $('v-steps').innerHTML = '';
   $('v-actions').innerHTML = '';
+  // 위의 큰 글씨는 시스템이 확인한 사실, 이 줄은 AI가 스스로 한 주장이다.
+  $('v-claim').textContent = plan.intent
+    ? `AI가 주장한 의도: "${plan.intent}"` +
+      (typeof plan.confidence === 'number' ? ` · AI 스스로 매긴 신뢰도 ${plan.confidence}` : '')
+    : '';
   $('v-elapsed').textContent = v.elapsed_us !== undefined
     ? `커널 판정 소요 ${(v.elapsed_us / 1000).toFixed(2)}ms` : '';
 
   if (data.status === 'denied') {
     box.className = 'card verdict deny';
-    $('v-title').textContent = '🛑 막았습니다.';
-    $('v-headline').textContent = plan.payee
-      ? `${plan.payee}에게 ${won(plan.amount)}`
-      : (plan.intent || 'AI의 요청을 거부했습니다');
-    $('v-subline').textContent = '돈은 나가지 않았습니다.';
+    const emptyPlan = !(plan.steps || []).length;
+    $('v-title').textContent = emptyPlan ? '🛑 실행하지 않았습니다.' : '🛑 막았습니다.';
+    if (emptyPlan) {
+      // 빈 계획 = AI가 스스로 '할 수 없다'고 한 것. 이해 실패와는 다르다.
+      $('v-headline').textContent = 'AI가 할 수 없는 요청입니다';
+      $('v-subline').textContent =
+        '요청한 청구서나 수취인을 찾지 못해 AI가 아무 행동도 제안하지 않았고, 커널이 빈 계획을 거부했습니다.';
+    } else {
+      $('v-headline').textContent = plan.payee
+        ? `${plan.payee}에게 ${won(plan.amount)}`
+        : (plan.intent || 'AI의 요청을 거부했습니다');
+      $('v-subline').textContent = '돈은 나가지 않았습니다.';
+    }
     $('v-reasons').innerHTML = renderReasons(v.triggered);
     $('v-steps').innerHTML = renderSteps(plan.steps);
 
   } else if (data.status === 'hold') {
     box.className = 'card verdict hold';
     $('v-title').textContent = '✋ 확인이 필요합니다.';
-    $('v-headline').textContent = `${plan.payee || ''} ${won(plan.amount)}`.trim();
-    $('v-subline').textContent = '이대로 진행할까요? 되돌릴 수 없는 행동입니다.';
+    if (plan.amount) {
+      $('v-headline').textContent = `${plan.payee || ''} ${won(plan.amount)}`.trim();
+      $('v-subline').textContent = '이대로 진행할까요? 되돌릴 수 없는 행동입니다.';
+    } else {
+      // 금액도 수취인도 없는 계획 — "납부할까요?"라고 물으면 거짓말이 된다
+      $('v-headline').textContent = '금전 이동 없음';
+      $('v-subline').textContent =
+        `AI가 제안한 행동 ${(plan.steps || []).length}개를 실행할까요? 이 계획에는 금액도 수취인도 없습니다.`;
+    }
     $('v-reasons').innerHTML = renderReasons(v.triggered);
     $('v-steps').innerHTML = renderSteps(plan.steps);
 
@@ -268,17 +361,28 @@ function render(data) {
     $('v-actions').append(yes, no);
 
   } else if (data.status === 'executed') {
+    // '실행이 끝났다'와 '돈이 오갔다'는 다른 이야기다. 영수증은 잔액의 실제 변화만 말한다.
+    const before = data.balance_before, after = data.balance;
+    const moved = (typeof before === 'number' && typeof after === 'number') ? before - after : null;
     box.className = 'card verdict allow';
-    $('v-title').textContent = '✅ 처리했습니다.';
-    $('v-headline').textContent = plan.payee ? `${plan.payee} ${won(plan.amount)}` : (plan.intent || '완료');
-    $('v-subline').textContent = `남은 잔액 ${won(data.balance)}`;
     $('v-reasons').innerHTML = renderReasons(v.triggered);
     $('v-steps').innerHTML = renderSteps(plan.steps);
 
-    const undo = document.createElement('button');
-    undo.className = 'danger'; undo.textContent = '되돌리기';
-    undo.onclick = () => doUndo(plan.request_id);
-    $('v-actions').append(undo);
+    if (moved) {
+      $('v-title').textContent = '✅ 처리했습니다.';
+      $('v-headline').textContent = `${plan.payee || ''} ${won(moved)}`.trim();
+      $('v-subline').textContent = `남은 잔액 ${won(after)}`;
+      const undo = document.createElement('button');
+      undo.className = 'danger'; undo.textContent = '되돌리기';
+      undo.onclick = () => doUndo(plan.request_id);
+      $('v-actions').append(undo);
+    } else {
+      // 되돌릴 것이 없으므로 되돌리기 버튼도 두지 않는다
+      $('v-title').textContent = '✅ 실행했지만, 돈은 오가지 않았습니다.';
+      $('v-headline').textContent = `잔액 그대로 ${won(after)}`;
+      $('v-subline').textContent =
+        `AI가 계획한 행동 ${(plan.steps || []).length}개를 모두 실행했지만, 그중 금전 이동은 없었습니다.`;
+    }
 
   } else if (data.status === 'halted') {
     box.className = 'card verdict deny';
@@ -295,6 +399,7 @@ function render(data) {
     $('v-reasons').innerHTML = '';
   }
   box.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  speakVerdict(data);
 }
 
 /* ── 동작 ─────────────────────────────────────────────────── */
@@ -366,6 +471,22 @@ document.querySelectorAll('[data-scenario]').forEach(b =>
   b.addEventListener('click', () => runScenario(b.dataset.scenario)));
 $('btn-run').addEventListener('click', runFreeText);
 $('btn-audit').addEventListener('click', loadAudit);
+$('btn-mic').addEventListener('click', startListening);
+
+const voiceBtn = $('btn-voice');
+if (!('speechSynthesis' in window)) {
+  voiceBtn.disabled = true;
+  voiceBtn.textContent = '🔇 이 브라우저는 음성 안내를 지원하지 않습니다';
+  voiceBtn.setAttribute('aria-pressed', 'false');
+} else {
+  voiceBtn.addEventListener('click', () => {
+    voiceOn = !voiceOn;
+    voiceBtn.setAttribute('aria-pressed', String(voiceOn));
+    voiceBtn.textContent = voiceOn ? '🔊 음성 안내 켜짐' : '🔇 음성 안내 꺼짐';
+    if (!voiceOn) window.speechSynthesis.cancel();
+    else speak('음성 안내를 켰습니다.');
+  });
+}
 
 refreshStatus();
 </script>

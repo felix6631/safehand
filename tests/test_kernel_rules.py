@@ -10,6 +10,7 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from agent.attestation import sign_instruction
 from agent.kernel_client import KernelClient
 from tests.helpers import TEST_SECRET, make_attestation, make_spec
 
@@ -59,6 +60,65 @@ def _amount_att_and_spec(request_id, amount, balance=300000):
         {"seq": 1, "action": "input", "target": "amount", "value": str(amount), "evidence": "bills[0].amount"},
     ], att)
     return att, spec
+
+
+# ---- R5-c: 사용자 발화를 근거로 삼는 경로 -------------------------------------
+# 화면에 없는 값("김영희에게 3만원")은 state_view로 근거를 댈 수 없다. 그렇다고 AI의 말을
+# 믿을 수는 없으므로, executor가 서명한 사용자 발화와 대조한다. 서명이 이 경로의 전부다.
+
+def _said_att_and_spec(request_id, instruction, value, target="amount",
+                       secret=TEST_SECRET, include_instruction=True):
+    att = make_attestation(balance=300000)
+    if include_instruction:
+        att["user_instruction"] = instruction
+        att["instruction_hmac"] = sign_instruction(secret, instruction)
+    spec = make_spec(request_id, [
+        {"seq": 1, "action": "input", "target": target, "value": value,
+         "evidence": "user_instruction"},
+    ], att)
+    return att, spec
+
+
+def _r5_hits(out):
+    return [t for t in out["triggered"] if t["rule_id"] == "R5"]
+
+
+@pytest.mark.parametrize("instruction,value", [
+    ("김영희에게 3만원 보내줘", "30000"),      # 만 단위
+    ("전기요금 5만2천원 내줘", "52000"),        # 만+천 조합
+    ("김영희에게 30000원 보내줘", "30000"),     # 숫자 그대로
+    ("52,000원 납부해줘", "52000"),             # 콤마 표기
+])
+def test_r5c_amount_the_user_actually_said_is_allowed(kernel, instruction, value):
+    att, spec = _said_att_and_spec("r5c-ok", instruction, value)
+    out = kernel.call({"type": "verify", "spec": spec, "attestation": att})
+    assert _r5_hits(out) == [], out
+    assert out["decision"] == "ALLOW", out
+
+
+def test_r5c_amount_the_user_never_said_is_denied(kernel):
+    # AI가 3만원을 30만원으로 부풀린 경우 — 2막과 같은 오류를 발화 대조로도 잡는다.
+    att, spec = _said_att_and_spec("r5c-inflated", "김영희에게 3만원 보내줘", "300000")
+    out = kernel.call({"type": "verify", "spec": spec, "attestation": att})
+    assert out["decision"] == "DENY", out
+    assert _r5_hits(out), out
+
+
+def test_r5c_forged_instruction_signature_is_denied(kernel):
+    # AI가 사용자 발화를 지어내도 secret이 없으므로 서명을 만들 수 없다.
+    att, spec = _said_att_and_spec("r5c-forged", "김영희에게 3만원 보내줘", "30000",
+                                   secret="attacker-secret")
+    out = kernel.call({"type": "verify", "spec": spec, "attestation": att})
+    assert out["decision"] == "DENY", out
+    assert any("서명" in t["message_ko"] for t in _r5_hits(out)), out
+
+
+def test_r5c_without_signed_instruction_is_denied(kernel):
+    att, spec = _said_att_and_spec("r5c-missing", "김영희에게 3만원 보내줘", "30000",
+                                   include_instruction=False)
+    out = kernel.call({"type": "verify", "spec": spec, "attestation": att})
+    assert out["decision"] == "DENY", out
+    assert _r5_hits(out), out
 
 
 def test_r9_night_transfer_matches_current_hour(kernel_real_config):

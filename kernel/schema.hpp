@@ -39,6 +39,9 @@ struct SchemaResult {
     bool ok = true;
     std::string detail;
     Spec spec;
+    // 형식은 멀쩡한데 할 행동이 없는 경우(steps가 빈 배열). 판정은 똑같이 DENY지만
+    // "AI가 못 알아들었다"와 "AI가 할 수 없다고 판단했다"는 사용자에게 전혀 다른 말이다.
+    bool empty_plan = false;
 };
 
 SchemaResult parse_and_validate_spec(const nlohmann::json& in);

@@ -23,6 +23,10 @@ struct Attestation {
     std::string state_hash;
     std::string hmac;
     AttestedStateView state_view;
+    // 사용자가 실제로 한 말. executor가 orchestrator를 통해 AI를 우회해 넣어준다.
+    // 없을 수도 있다(시나리오 재생 등) — 그때는 이 근거를 쓸 수 없을 뿐이다.
+    std::string user_instruction;
+    std::string instruction_hmac;
 };
 
 struct AttestationResult {

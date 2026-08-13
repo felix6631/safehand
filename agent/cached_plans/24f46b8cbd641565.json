@@ -1,0 +1,41 @@
+{
+  "user_instruction": "서울도시가스에 3만8천원 납부해줘.",
+  "spec": {
+    "schema_version": "1.0",
+    "request_id": "req-20250521-001",
+    "user_intent": "서울도시가스에 38,000원 납부",
+    "model_confidence": 0.97,
+    "claimed_state": {
+      "page": "/bills",
+      "balance": 248000,
+      "state_hash": "490e5637d54a11c37b0497d194efccb9c30f7dd3ddc030b9694e0c6bf96990c6"
+    },
+    "steps": [
+      {
+        "seq": 1,
+        "action": "navigate",
+        "target": "/pay"
+      },
+      {
+        "seq": 2,
+        "action": "select",
+        "target": "payee",
+        "value": "서울도시가스",
+        "evidence": "bills[1].payee"
+      },
+      {
+        "seq": 3,
+        "action": "input",
+        "target": "amount",
+        "value": "38000",
+        "evidence": "bills[1].amount"
+      },
+      {
+        "seq": 4,
+        "action": "click",
+        "target": "btn_pay",
+        "irreversible": true
+      }
+    ]
+  }
+}

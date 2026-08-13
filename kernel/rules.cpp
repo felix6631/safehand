@@ -1,6 +1,8 @@
 #include "rules.hpp"
 #include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <climits>
 #include <ctime>
 #include "audit.hpp"
 
@@ -21,6 +23,82 @@ namespace {
  * stoll이 "100원" 처럼 뒤에 문자가 붙어도 앞부분만 읽고 성공 처리해버리는 걸 막기 위해
  * pos(실제로 읽은 길이)가 문자열 전체 길이와 같은지 확인한다 -> 전체가 숫자여야만 통과
  */
+// '만/천/백/십' 한 글자를 UTF-8 바이트로 알아본다. 아니면 0을 돌려준다.
+long long korean_unit_at(const std::string& s, size_t i, size_t& len) {
+    len = 0;
+    if (i + 3 > s.size()) return 0;
+    unsigned char a = static_cast<unsigned char>(s[i]);
+    unsigned char b = static_cast<unsigned char>(s[i + 1]);
+    unsigned char c = static_cast<unsigned char>(s[i + 2]);
+    len = 3;
+    if (a == 0xEB && b == 0xA7 && c == 0x8C) return 10000; // 만
+    if (a == 0xEC && b == 0xB2 && c == 0x9C) return 1000;  // 천
+    if (a == 0xEB && b == 0xB0 && c == 0xB1) return 100;   // 백
+    if (a == 0xEC && b == 0x8B && c == 0xAD) return 10;    // 십
+    len = 0;
+    return 0;
+}
+
+// 사용자가 실제로 한 말에서 '끌어낼 수 있는 수'를 모은다.
+// 지원: 연속 숫자(콤마 허용), 그리고 만/천/백/십 조합 — "3만" -> 30000, "5만2천" -> 52000.
+// 한글 수사("삼만원")는 일부러 지원하지 않는다. 이 함수가 커질수록 커널의 검증 가능성이
+// 떨어지고, 파서 자체가 새로운 공격면이 된다.
+std::vector<long long> numbers_in(const std::string& raw) {
+    std::string text;
+    text.reserve(raw.size());
+    for (char ch : raw) {
+        if (ch != ',') text += ch; // "52,000" -> "52000"
+    }
+
+    std::vector<long long> out;
+    long long total = 0, last = 0;
+    bool have_last = false, in_unit_expr = false;
+
+    auto flush = [&]() {
+        if (in_unit_expr) {
+            long long v = total + (have_last ? last : 0);
+            if (v > 0) out.push_back(v);
+        } else if (have_last) {
+            out.push_back(last);
+        }
+        total = 0;
+        last = 0;
+        have_last = false;
+        in_unit_expr = false;
+    };
+
+    size_t i = 0;
+    while (i < text.size()) {
+        if (std::isdigit(static_cast<unsigned char>(text[i]))) {
+            long long n = 0;
+            bool overflow = false;
+            while (i < text.size() && std::isdigit(static_cast<unsigned char>(text[i]))) {
+                int d = text[i] - '0';
+                if (n > (LLONG_MAX - d) / 10) overflow = true;
+                else n = n * 10 + d;
+                i++;
+            }
+            if (overflow) { flush(); continue; }
+            last = n;
+            have_last = true;
+            continue;
+        }
+        size_t ulen = 0;
+        long long unit = korean_unit_at(text, i, ulen);
+        if (unit != 0) {
+            total += (have_last ? last : 1) * unit;
+            have_last = false;
+            in_unit_expr = true;
+            i += ulen;
+            continue;
+        }
+        flush();
+        i += 1;
+    }
+    flush();
+    return out;
+}
+
 bool try_parse_amount(const std::string& value, long long& out) {
     if (value.empty()) return false;
     try {
@@ -58,6 +136,12 @@ std::vector<RuleHit> rule_schema(const RuleContext& ctx) {
 // R5-b: 금액·수취인처럼 사람이 다치는 값은 반드시 evidence 경로로 근거를 대야 한다.
 //       근거가 없거나, 경로가 존재하지 않거나, 값이 다르면 DENY.
 //       숨겨진 배너로 지어낸 계좌·금액은 state_view 어디에도 없으므로 근거를 댈 수 없다.
+// R5-c: 근거의 출처는 화면만이 아니다. "김영희에게 3만원 보내줘"의 3만원은 화면 어디에도
+//       없지만 사용자가 직접 말한 값이다. evidence="user_instruction"이면 executor가
+//       서명한 사용자 발화와 대조한다. 서명 검증이 먼저이며(secret은 AI에게 없다),
+//       사용자가 말하지 않은 값이면 DENY.
+//       이 경로가 인젝션에 열리지 않는 이유: 배너가 지어낸 계좌·금액은 화면에는 있어도
+//       '사용자의 말'에는 없다. 대조 대상은 화면이 아니라 사용자의 발화다.
 std::vector<RuleHit> rule_state_grounding(const RuleContext& ctx) {
     std::vector<RuleHit> hits;
 
@@ -93,6 +177,48 @@ std::vector<RuleHit> rule_state_grounding(const RuleContext& ctx) {
             continue;
         }
         /* state.cpp의 resolve_evidence로 실제 화면 데이터에서 그 경로를 따라가봄 */
+
+        // R5-c: 사용자가 직접 말한 값을 근거로 드는 경로.
+        // 화면에 없는 값(예: "김영희에게 3만원")은 state_view로는 절대 근거를 댈 수 없다.
+        // 그렇다고 AI의 말을 믿을 수는 없으므로, executor가 서명한 '사용자 발화'와 대조한다.
+        // 서명 검증이 먼저다 — 이게 없으면 AI가 사용자 발화를 지어내면 그만이다.
+        if (st.evidence == "user_instruction") {
+            if (ctx.att.user_instruction.empty() || ctx.att.instruction_hmac.empty()) {
+                hits.push_back({Decision::DENY, "R5", st.seq,
+                    "사용자가 한 말을 확인할 수 없어 막았습니다.",
+                    "evidence='user_instruction'인데 서명된 사용자 발화가 attestation에 없습니다"});
+                continue;
+            }
+            nlohmann::json wrapper = nlohmann::json::object();
+            wrapper["user_instruction"] = ctx.att.user_instruction;
+            if (hmac_sha256_hex(ctx.hmac_secret, canonical_dump(wrapper)) != ctx.att.instruction_hmac) {
+                hits.push_back({Decision::DENY, "R5", st.seq,
+                    "사용자 발화의 서명이 맞지 않아 막았습니다.",
+                    "instruction_hmac이 재계산 값과 일치하지 않습니다"});
+                continue;
+            }
+            if (ctx.cfg.is_amount_field(st.target)) {
+                long long want = 0;
+                if (!try_parse_amount(st.value, want)) {
+                    hits.push_back({Decision::DENY, "R5", st.seq,
+                        "금액 형식이 올바르지 않아 막았습니다.",
+                        "value='" + st.value + "'을(를) 금액으로 읽을 수 없습니다"});
+                    continue;
+                }
+                std::vector<long long> said = numbers_in(ctx.att.user_instruction);
+                if (std::find(said.begin(), said.end(), want) == said.end()) {
+                    hits.push_back({Decision::DENY, "R5", st.seq,
+                        "사용자가 말하지 않은 금액이라 막았습니다.",
+                        "value='" + st.value + "'을(를) 사용자 발화에서 찾을 수 없습니다"});
+                }
+            } else if (ctx.att.user_instruction.find(st.value) == std::string::npos) {
+                hits.push_back({Decision::DENY, "R5", st.seq,
+                    "사용자가 말하지 않은 값이라 막았습니다.",
+                    "value='" + st.value + "'이(가) 사용자 발화에 없습니다"});
+            }
+            continue;
+        }
+
         EvidenceResult ev = resolve_evidence(ctx.att.state_view.raw, st.evidence);
         if (!ev.found) {
             hits.push_back({Decision::DENY, "R5", st.seq,
