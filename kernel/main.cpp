@@ -1,3 +1,4 @@
+/* includes */
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -22,7 +23,7 @@ struct PendingHold {
     std::vector<RuleHit> triggered;
 };
 
-// 규칙 파일이 바뀌었는지 추적하기 위해 BOOT/CONFIG_RELOAD에 해시를 남긴다.
+/* 규칙 파일이 바뀌었는지 추적하기 위해 BOOT/CONFIG_RELOAD에 해시를 남긴다. */
 std::string file_sha256(const std::string& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in.is_open()) return "";
@@ -79,7 +80,7 @@ json handle_verify(const json& in, Config& cfg, Ledger& ledger, Audit& audit, co
     std::string request_id = in.value("request_id", "");
     if (in.contains("spec") && in["spec"].is_object() && in["spec"].contains("request_id")) {
         request_id = in["spec"].value("request_id", request_id);
-    }
+    }   
 
     SchemaResult sr = parse_and_validate_spec(in);
     if (!sr.ok) {
@@ -104,7 +105,7 @@ json handle_verify(const json& in, Config& cfg, Ledger& ledger, Audit& audit, co
     Verdict v = evaluate(ctx);
 
     if (v.decision != Decision::DENY) {
-        // ALLOW/HOLD인 요청만 기억해 둔다 — step_check(TOCTOU)와 commit(장부)에 필요하다.
+        /* ALLOW/HOLD인 요청만 기억해 둔다 — step_check(TOCTOU)와 commit(장부)에 필요하다. */
         verified_specs[sr.spec.request_id] = sr.spec;
         baseline_hash[sr.spec.request_id] = ar.attestation.state_hash;
         for (const auto& st : sr.spec.steps) {
@@ -157,7 +158,7 @@ json handle_step_check(const json& in, std::map<std::string, Spec>& verified_spe
     if (new_hash == hit->second) {
         out["decision"] = "ALLOW";
     } else if (step && step->action == "navigate" && ar.attestation.state_view.page == step->target) {
-        // 의도된 navigate로 인한 상태 변화 -> 새 해시를 다음 스텝의 기준값으로 갱신한다.
+        /* 의도된 navigate로 인한 상태 변화 -> 새 해시를 다음 스텝의 기준값으로 갱신한다. */
         hit->second = new_hash;
         out["decision"] = "ALLOW";
     } else {
@@ -210,9 +211,11 @@ json handle_commit(const json& in, Ledger& ledger, Audit& audit,
         }
     }
 
-    // navigate 스텝이 실제로 의도한 목적지로 이동했다면, 다음 step_check의 기준 해시를 갱신한다.
-    // step_check는 그 navigate를 실행하기 "직전"에 이미 통과했으므로, 기준값 갱신은
-    // 여기(실행 직후 commit 시점)에서 해야 다음 스텝의 step_check가 정확히 비교할 수 있다.
+    /**
+     *  navigate 스텝이 실제로 의도한 목적지로 이동했다면, 다음 step_check의 기준 해시를 갱신한다.
+     * step_check는 그 navigate를 실행하기 "직전"에 이미 통과했으므로, 기준값 갱신은
+     * 여기(실행 직후 commit 시점)에서 해야 다음 스텝의 step_check가 정확히 비교할 수 있다.
+     */
     if (in.contains("attestation")) {
         AttestationResult ar = parse_attestation(in);
         auto sspec = verified_specs.find(request_id);
@@ -232,8 +235,10 @@ json handle_commit(const json& in, Ledger& ledger, Audit& audit,
     payload["seq"] = seq;
     payload["result"] = result;
     if (in.contains("snapshot")) {
-        // 스냅샷 파일 자체는 orchestrator가 관리하지만, 경로+해시를 해시체인에 새겨두면
-        // 스냅샷 파일이 사후에 변조됐는지도 감사 로그와 대조해 탐지할 수 있다.
+        /**
+         * 스냅샷 파일 자체는 orchestrator가 관리하지만, 경로+해시를 해시체인에 새겨두면
+         * 스냅샷 파일이 사후에 변조됐는지도 감사 로그와 대조해 탐지할 수 있다.
+         */
         payload["snapshot"] = in["snapshot"];
     }
     audit.record("EXECUTED", payload);
@@ -251,7 +256,7 @@ json handle_undo(const json& in, Audit& audit) {
     return {{"type", "undo_ack"}, {"request_id", request_id}};
 }
 
-} // namespace
+} /* namespace */ 
 
 int main(int argc, char** argv) {
     std::ios::sync_with_stdio(false);
@@ -301,7 +306,7 @@ int main(int argc, char** argv) {
                 out = {{"type", "error"}, {"message", "unknown or not-yet-implemented type: " + type}};
             }
         } catch (const std::exception& e) {
-            // 파싱조차 실패 = R1 위반. 절대 통과시키지 않는다.
+            /* 파싱조차 실패 = R1 위반. 절대 통과시키지 않는다. */
             out = deny_r1("", "AI가 보낸 지시를 이해할 수 없어 막았습니다.", e.what());
             audit.record("VERDICT", out);
         }
@@ -309,7 +314,7 @@ int main(int argc, char** argv) {
         out["elapsed_us"] = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 
         std::cout << out.dump(-1, ' ', /*ensure_ascii=*/true) << "\n";
-        std::cout.flush(); // 빼먹으면 Python이 영원히 멈춘다.
+        std::cout.flush(); /* 빼먹으면 Python이 영원히 멈춘다. */
     }
     return 0;
 }

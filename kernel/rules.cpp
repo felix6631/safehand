@@ -6,17 +6,23 @@
 #include <ctime>
 #include "audit.hpp"
 
+/* 판정 결과(enum)를 사람이 읽을 분자열로 변환 */
 const char* decision_to_string(Decision d) {
     switch (d) {
         case Decision::ALLOW: return "ALLOW";
         case Decision::HOLD:  return "HOLD";
         case Decision::DENY:  return "DENY";
     }
-    return "DENY";
+    return "DENY"; /* enum에 없는 값이 들어와도 안전한 쪽(차단)으로 fallback */
 }
 
 namespace {
 
+/**
+ * 문자열을 음이 아닌 ㅈ어수로 안전하게 변환.
+ * stoll이 "100원" 처럼 뒤에 문자가 붙어도 앞부분만 읽고 성공 처리해버리는 걸 막기 위해
+ * pos(실제로 읽은 길이)가 문자열 전체 길이와 같은지 확인한다 -> 전체가 숫자여야만 통과
+ */
 // '만/천/백/십' 한 글자를 UTF-8 바이트로 알아본다. 아니면 0을 돌려준다.
 long long korean_unit_at(const std::string& s, size_t i, size_t& len) {
     len = 0;
@@ -106,16 +112,19 @@ bool try_parse_amount(const std::string& value, long long& out) {
     }
 }
 
+/* 이 스텝이 "금액을 입력/선택하는 단계" 인지 판단 (config.cpp의 amount_fields와 대조) */
 bool is_amount_step(const SpecStep& st, const Config& cfg) {
     return (st.action == "input" || st.action == "select") && cfg.is_amount_field(st.target);
 }
 
-} // namespace
+} /* namespace */
 
-// R1 — 스키마 검증.
-// JSON 파싱 실패 및 구조적 위반(필수 필드·action 5종·seq 연속)은
-// schema.cpp::parse_and_validate_spec()에서 이미 걸러진 뒤에만 여기 도달한다.
-// 남은 R1 검사(target이 state_view.form_fields/허용 URL에 있는지)는 Phase 5에서 채워진다.
+/**
+ * R1 — 스키마 검증.
+ * JSON 파싱 실패 및 구조적 위반(필수 필드·action 5종·seq 연속)은
+ * schema.cpp::parse_and_validate_spec()에서 이미 걸러진 뒤에만 여기 도달한다.
+ * 남은 R1 검사(target이 state_view.form_fields/허용 URL에 있는지)는 Phase 5에서 채워진다.
+ */ 
 std::vector<RuleHit> rule_schema(const RuleContext& ctx) {
     (void)ctx;
     return {};
@@ -136,6 +145,7 @@ std::vector<RuleHit> rule_schema(const RuleContext& ctx) {
 std::vector<RuleHit> rule_state_grounding(const RuleContext& ctx) {
     std::vector<RuleHit> hits;
 
+    /* claimed_state(AI 자기 진술)와 attestation(실행 계층 진짜 증언)의 해시를 비교 */
     if (!ctx.spec.claimed_state.present || ctx.spec.claimed_state.state_hash.empty() ||
         ctx.spec.claimed_state.state_hash != ctx.att.state_hash) {
         hits.push_back({Decision::DENY, "R5", 0,
@@ -144,6 +154,7 @@ std::vector<RuleHit> rule_state_grounding(const RuleContext& ctx) {
         return hits; // 상태 자체가 안 맞으면 evidence 검사는 의미가 없다
     }
 
+    /* state.cpp의 hmac_sha256_hex를 다시 호출해 증언의 서명을 재계산 -> 위조 여부 확인 */
     std::string expected_hmac = hmac_sha256_hex(ctx.hmac_secret, canonical_dump(ctx.att.state_view.raw));
     if (expected_hmac != ctx.att.hmac) {
         hits.push_back({Decision::DENY, "R5", 0,
@@ -152,17 +163,20 @@ std::vector<RuleHit> rule_state_grounding(const RuleContext& ctx) {
         return hits;
     }
 
+    /* 각 스텝을 돌면서, 금액/수취인처럼 민감한 값을 다루는 스텝만 근거 검사를 받음 */
     for (const auto& st : ctx.spec.steps) {
         bool needs_grounding = (st.action == "input" || st.action == "select") &&
                                 (ctx.cfg.is_amount_field(st.target) || ctx.cfg.is_payee_field(st.target));
         if (!needs_grounding) continue;
 
+        /* 근거 경로 자체가 없으면 거부 */
         if (!st.has_evidence || st.evidence.empty()) {
             hits.push_back({Decision::DENY, "R5", st.seq,
                 "근거 없는 값이라 막았습니다.",
                 "target='" + st.target + "'에 evidence가 없습니다"});
             continue;
         }
+        /* state.cpp의 resolve_evidence로 실제 화면 데이터에서 그 경로를 따라가봄 */
 
         // R5-c: 사용자가 직접 말한 값을 근거로 드는 경로.
         // 화면에 없는 값(예: "김영희에게 3만원")은 state_view로는 절대 근거를 댈 수 없다.
@@ -212,6 +226,7 @@ std::vector<RuleHit> rule_state_grounding(const RuleContext& ctx) {
                 "evidence='" + st.evidence + "' 경로를 찾을 수 없습니다"});
             continue;
         }
+        /* 경로에서 찾은 실제 값과 AI가 입력하려는 값이 다르면 -> AI가 지어낸 값 */
         if (ev.value_str != st.value) {
             hits.push_back({Decision::DENY, "R5", st.seq,
                 "근거와 실제 값이 달라서 막았습니다.",
@@ -222,7 +237,9 @@ std::vector<RuleHit> rule_state_grounding(const RuleContext& ctx) {
     return hits;
 }
 
-// R2 — 비가역 행동 본인확인. irreversible 플래그 또는 cfg.irreversible_targets에 해당하면 HOLD.
+// R2 — 비가역 행동 본인확인. 
+// irreversible 플래그 또는 cfg.irreversible_targets(설정에 등록된 대상)
+// 중 하나라도 해당하면 DENY가 아닌 HOLD(사람 확인 후 진행)로 처리.
 std::vector<RuleHit> rule_irreversible(const RuleContext& ctx) {
     std::vector<RuleHit> hits;
     for (const auto& st : ctx.spec.steps) {
@@ -242,18 +259,21 @@ std::vector<RuleHit> rule_amount_limit(const RuleContext& ctx) {
     for (const auto& st : ctx.spec.steps) {
         if (!is_amount_step(st, ctx.cfg)) continue;
 
+        /* 값이 유효한 숫자로 파싱되는지부터 확인 */
         long long amount = 0;
         if (!st.has_value || !try_parse_amount(st.value, amount)) {
             hits.push_back({Decision::DENY, "R3", st.seq,
                 "금액이 올바르지 않아 막았습니다.", "value='" + st.value + "'"});
             continue;
         }
+        /* 1회 이체 한도(config.cpp) 초과 검사 */
         if (amount > ctx.cfg.per_tx_limit) {
             hits.push_back({Decision::DENY, "R3", st.seq,
                 "1회 한도를 넘는 금액이라 막았습니다.",
                 std::to_string(amount) + " > per_tx_limit(" + std::to_string(ctx.cfg.per_tx_limit) + ")"});
             continue;
         }
+        /* ledger.cpp의 오늘 누적액 + 이번 금액이 일일 한도를 넘는지 검사 */
         if (ctx.ledger.daily_total() + amount > ctx.cfg.daily_limit) {
             hits.push_back({Decision::DENY, "R3", st.seq,
                 "오늘 이체 한도를 넘어서 막았습니다.",
@@ -261,6 +281,7 @@ std::vector<RuleHit> rule_amount_limit(const RuleContext& ctx) {
                 " > daily_limit(" + std::to_string(ctx.cfg.daily_limit) + ")"});
             continue;
         }
+        /* 실제 화면에 표시된 진짜 잔액(AI 주장이 아닌 attestation 값)과 비교 */
         if (amount > ctx.att.state_view.balance) {
             hits.push_back({Decision::DENY, "R3", st.seq,
                 "잔액이 부족해 막았습니다.",
@@ -289,6 +310,7 @@ std::vector<RuleHit> rule_unknown_payee(const RuleContext& ctx) {
 }
 
 // R6 — 행동 예산. 스텝 수, navigate 횟수, 입력 길이를 제한한다.
+// AI가 한 번에 너무 많은/긴 행동을 몰아서 시도하는 걸 막는다.
 std::vector<RuleHit> rule_budget(const RuleContext& ctx) {
     std::vector<RuleHit> hits;
     if ((int)ctx.spec.steps.size() > ctx.cfg.max_steps) {
@@ -313,7 +335,7 @@ std::vector<RuleHit> rule_budget(const RuleContext& ctx) {
     return hits;
 }
 
-// R7 — 모델 신뢰도. 임계값 미만이면 HOLD (필드 자체가 없으면 R1에서 이미 DENY).
+// R7 — 모델 신뢰도. 임계값 미만이면 HOLD (필드 자체가 없으면 R1에서 이미 DENY, 여기서는 값 비교만).
 std::vector<RuleHit> rule_confidence(const RuleContext& ctx) {
     if (ctx.spec.model_confidence < ctx.cfg.confidence_threshold) {
         return {{Decision::HOLD, "R7", 0,
@@ -339,6 +361,7 @@ std::vector<RuleHit> rule_consent_block(const RuleContext& ctx) {
 
 // R9 — 심야 시간대(기본 00~06시) 금전 이동은 HOLD.
 std::vector<RuleHit> rule_night_transfer(const RuleContext& ctx) {
+    /* 금액 관련 스텝이 하나도 없으면 이 규칙 자체가 해당 없음 */
     bool has_money_step = false;
     for (const auto& st : ctx.spec.steps) {
         if (is_amount_step(st, ctx.cfg)) { has_money_step = true; break; }
@@ -352,9 +375,14 @@ std::vector<RuleHit> rule_night_transfer(const RuleContext& ctx) {
 #else
     gmtime_r(&t, &tm_utc);
 #endif
-    // UTC 시각을 사용자 지역 시각으로 옮긴다. 이 보정이 없으면 한국 기준 낮 09~15시가
-    // "심야"로 판정된다 (UTC 00~06시와 겹치기 때문).
+    // UTC 시각에 설정된 시차 보정을 더해 사용자 지역 시각으로 변환.
+    // 이 보정이 없으면 한국 기준 낮 09~15시가 "심야"로 잘못 판정된다
+    // (UTC 00~06시와 겹치기 때문). % 24 + 24) % 24는 음수가 나와도
+    // 항상 0~23 범위로 정규화하기 위한 처리.
     int hour = ((tm_utc.tm_hour + ctx.cfg.timezone_offset_hours) % 24 + 24) % 24;
+
+    // 심야 시작이 끝보다 작으면(예: 0~6시, 자정을 안 넘김) 단순 범위 비교,
+    // 시작이 끝보다 크면(예: 22~6시, 자정을 넘어감) 반대 방식으로 비교
     bool is_night = (ctx.cfg.night_start_hour <= ctx.cfg.night_end_hour)
         ? (hour >= ctx.cfg.night_start_hour && hour < ctx.cfg.night_end_hour)
         : (hour >= ctx.cfg.night_start_hour || hour < ctx.cfg.night_end_hour);
@@ -370,6 +398,7 @@ std::vector<RuleHit> rule_night_transfer(const RuleContext& ctx) {
 // rules.cpp의 이 표가 곧 "사람이 읽을 수 있는 안전 명세"다.
 // 순서: 구조적 위반(R1) -> 근본 방어(R5) -> 예산(R6) -> 절대 금지(R8) -> 수취인(R4) -> 금액(R3)
 //       -> 비가역(R2, HOLD) -> 신뢰도(R7, HOLD) -> 심야(R9, HOLD)
+// 함수 자체를 데이터처럼 배열에 담아, evaluate()에서 반복문으로 순서대로 실행한다.
 const std::vector<RuleEntry> ALL_RULES = {
     {"R1", "스키마 검증", rule_schema},
     {"R5", "상태·근거 대조", rule_state_grounding},
