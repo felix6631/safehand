@@ -68,20 +68,26 @@ def _render_sitemap(sitemap) -> str:
     이걸 주지 않으면 AI는 지금 보고 있는 페이지 바깥을 전혀 알 수 없어서,
     '납부해줘'라는 지시에도 읽기만 하는 계획밖에 세우지 못한다.
     """
+    # 사이트맵이 없는 경우(옛 캐시 등)에도 동작해야 하므로 빈 문자열을 돌려준다.
     if not sitemap:
         return ""
     lines = []
     for page in sitemap:
         els = page.get("elements", [])
+        # 요소를 "id(종류, 이름)" 한 줄로 압축한다. JSON 그대로 주면 길기만 하고 읽기 어렵다.
         summary = ", ".join(f"{e['id']}({e['type']}, {e['label']})" for e in els) if els else "조작 가능한 요소 없음"
         lines.append(f"- {page['path']} [{page['title']}] : {summary}")
         for e in els:
+            # 선택지가 있는 요소(수취인 목록 등)는 고를 수 있는 값까지 알려준다.
+            # 이게 없으면 AI가 등록된 수취인이 누구인지 몰라 이체 계획을 못 세운다.
             if e.get("options"):
                 lines.append(f"    · {e['id']}에서 고를 수 있는 값: {', '.join(e['options'])}")
     return "\n[이 사이트의 페이지 구조]\n" + "\n".join(lines) + "\n"
 
 
 def build_user_message(instruction: str, observation: dict, state_hint: dict) -> str:
+    """이번 지시와 지금 화면을 하나의 사용자 메시지로 조립한다."""
+    # 현재 페이지의 요소는 JSON 그대로 넣는다. AI가 정확한 id를 그대로 옮겨 적어야 하기 때문이다.
     elements = json.dumps(observation.get("elements", []), ensure_ascii=False)
     return f"""[사용자 지시]
 {instruction}
